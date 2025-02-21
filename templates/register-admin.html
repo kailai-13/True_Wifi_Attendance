@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+
+    <title>Admin Registration</title>
+</head>
+<body>
+    <h2>Register as Admin</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <p style="color: red;">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST">
+        <label>ID Name:</label>
+        <input type="text" name="idname" required><br><br>
+        
+        <label>Username:</label>
+        <input type="text" name="username" required><br><br>
+        
+        <label>Password:</label>
+        <input type="password" name="password" required><br><br>
+        
+        <label>Secret Key:</label>
+        <input type="password" name="secret_key" required><br><br>
+
+        <button type="submit">Register</button>
+    </form>
+
+    <p>Already an admin? <a href="{{ url_for('login_admin') }}">Login here</a></p>
+</body>
+</html>

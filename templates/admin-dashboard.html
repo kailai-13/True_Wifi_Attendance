@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+
+</head>
+<body>
+    <h1>Currently Connected Students</h1>
+    <table border="1">
+        <tr>
+            <th>Student ID</th>
+            <th>Username</th>
+        </tr>
+        {% for student in students_present %}
+        <tr>
+            <td>{{ student.student_id }}</td>
+            <td>{{ student.username }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

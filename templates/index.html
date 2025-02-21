@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+
+    <title>WiFi BSSID Detector</title>
+</head>
+<body>
+    <h2>Connected WiFi BSSID </h2>
+    <p><strong>BSSID:</strong> {{ bssid1 }}</p>
+    <button><a href="{{ url_for('register_admin') }}">REGISTER FOR ADMIN</a></button>
+  
+    <button><a href="{{ url_for('login_admin') }}">LOGIN FOR ADMIN</a></button>
+    <button><a href="{{ url_for('register_student') }}">REGISTER FOR STUDENT</a></button>
+  
+    <button><a href="{{ url_for('login_student') }}">LOGIN FOR STUDENT</a></button>
+
+</body>
+</html>
