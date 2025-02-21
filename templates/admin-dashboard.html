@@ -1,23 +1,64 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+    <script>
+        function startSession() {
+            fetch("/start_session", { method: "POST" })
+            .then(response => response.json())
+            .then(data => alert(data.message))
+            .then(() => location.reload());
+        }
 
+        function endSession() {
+            fetch("/end_session", { method: "POST" })
+            .then(response => response.json())
+            .then(data => alert(data.message))
+            .then(() => location.reload());
+        }
+
+        function updateStudentList() {
+            fetch("/active_students")
+            .then(response => response.json())
+            .then(data => {
+                let tableBody = document.getElementById("student-list");
+                tableBody.innerHTML = "";
+                data.forEach(student => {
+                    let row = `<tr><td>${student.student_id}</td><td>${student.username}</td></tr>`;
+                    tableBody.innerHTML += row;
+                });
+            });
+        }
+
+        setInterval(updateStudentList, 5000);  // Refresh every 5 seconds
+    </script>
 </head>
 <body>
-    <h1>Currently Connected Students</h1>
+
+    <h1>Admin Dashboard</h1>
+
+    <button onclick="startSession()">Start Session</button>
+    <button onclick="endSession()">End Session</button>
+    <a href="/download_attendance"><button>Download Attendance</button></a>
+
+    <h2>Currently Connected Students</h2>
     <table border="1">
         <tr>
             <th>Student ID</th>
             <th>Username</th>
         </tr>
-        {% for student in students_present %}
-        <tr>
-            <td>{{ student.student_id }}</td>
-            <td>{{ student.username }}</td>
-        </tr>
-        {% endfor %}
+        <tbody id="student-list">
+            {% for student in students_present %}
+                <tr>
+                    <td>{{ student.student_id }}</td>
+                    <td>{{ student.username }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
     </table>
+
 </body>
 </html>

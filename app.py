@@ -1,9 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, session, redirect, url_for, flash, request, jsonify, send_file
 import subprocess
 import re
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-
+import csv
 app = Flask(__name__)
 
 # Provide a default database URI (required for SQLAlchemy to work)
@@ -26,6 +26,7 @@ class Admin(db.Model):
     idname = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
+    session_active = db.Column(db.Boolean, default=False) 
 
 class Student(db.Model):
     __bind_key__ = 'student_db'
@@ -120,9 +121,55 @@ def login_admin():
 
 @app.route('/admin_dashboard')
 def admin_dashboard():
-    students_present = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id.asc()).all()
-    return render_template('admin-dashboard.html', students_present=students_present)
+    if 'admin_id' not in session:
+        flash("Please log in first!", "warning")
+        return redirect(url_for('login_admin'))
 
+    admin = Admin.query.filter_by(id=session['admin_id']).first()
+    students_present = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
+
+    return render_template('admin-dashboard.html', students_present=students_present, session_active=admin.session_active)
+
+@app.route('/start_session', methods=['POST'])
+def start_session():
+    if 'admin_id' in session:
+        admin = Admin.query.filter_by(id=session['admin_id']).first()
+        admin.session_active = True
+        db.session.commit()
+        return jsonify({"message": "Session started successfully!"})
+    return jsonify({"error": "Unauthorized"}), 403
+
+@app.route('/end_session', methods=['POST'])
+def end_session():
+    if 'admin_id' in session:
+        admin = Admin.query.filter_by(id=session['admin_id']).first()
+        admin.session_active = False
+
+        # Log out all students
+        Student.query.update({"is_logged_in": False})
+        db.session.commit()
+
+        return jsonify({"message": "Session ended and database reset!"})
+    return jsonify({"error": "Unauthorized"}), 403
+
+@app.route('/active_students')
+def active_students():
+    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
+    student_data = [{"student_id": s.student_id, "username": s.username} for s in students]
+    return jsonify(student_data)
+
+@app.route('/download_attendance')
+def download_attendance():
+    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
+    file_path = "attendance.csv"
+    
+    with open(file_path, "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Student ID", "Username"])
+        for student in students:
+            writer.writerow([student.student_id, student.username])
+    
+    return send_file(file_path, as_attachment=True)
 
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
