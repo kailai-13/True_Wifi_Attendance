@@ -8,14 +8,16 @@
     <title>WiFi BSSID Detector</title>
 </head>
 <body>
-    <h2>Connected WiFi BSSID </h2>
-    <p><strong>BSSID:</strong> {{ bssid1 }}</p>
-    <button><a href="{{ url_for('register_admin') }}">REGISTER FOR ADMIN</a></button>
+    <h2>Connected WiFi BSSID </h2><br>
+    <div class="container">
+    
+    <button><a href="{{ url_for('register_admin') }}">REGISTER FOR ADMIN</a></button><br>
   
-    <button><a href="{{ url_for('login_admin') }}">LOGIN FOR ADMIN</a></button>
-    <button><a href="{{ url_for('register_student') }}">REGISTER FOR STUDENT</a></button>
+    <button><a href="{{ url_for('login_admin') }}">LOGIN FOR ADMIN</a></button><br>
+    <button><a href="{{ url_for('register_student') }}">REGISTER FOR STUDENT</a></button><br>
   
     <button><a href="{{ url_for('login_student') }}">LOGIN FOR STUDENT</a></button>
+    </div>
 
 </body>
 </html>
