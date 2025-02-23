@@ -19,7 +19,7 @@
             .then(data => alert(data.message))
             .then(() => location.reload());
         }
-
+// Update the updateStudentList function in admin-dashboard.html
         function updateStudentList() {
             fetch("/active_students")
             .then(response => response.json())
@@ -27,13 +27,25 @@
                 let tableBody = document.getElementById("student-list");
                 tableBody.innerHTML = "";
                 data.forEach(student => {
-                    let row = `<tr><td>${student.student_id}</td><td>${student.username}</td></tr>`;
+                    let row = `<tr>
+                        <td>${student.student_id}</td>
+                        <td>${student.username}</td>
+                        <td>${student.status}</td>
+                        <td>${student.active_time}</td>
+                    </tr>`;
                     tableBody.innerHTML += row;
                 });
             });
         }
-
-        setInterval(updateStudentList, 5000);  // Refresh every 5 seconds
+        setInterval(updateStudentList, 1000);  // Refresh every 2 seconds
+        function sendHeartbeat() {
+            fetch('/update_activity', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => { /* Optional handling */ });
+        }
+        // Send immediately and every 1 minute
+        sendHeartbeat();
+        setInterval(sendHeartbeat, 60000);
     </script>
 </head>
 <body>
@@ -45,16 +57,21 @@
     <a href="/download_attendance"><button>Download Attendance</button></a>
 
     <h2>Currently Connected Students</h2>
+<!-- Update the table in admin-dashboard.html -->
     <table border="1">
         <tr>
             <th>Student ID</th>
             <th>Username</th>
+            <th>Status</th>
+            <th>Active Time</th>
         </tr>
         <tbody id="student-list">
             {% for student in students_present %}
                 <tr>
                     <td>{{ student.student_id }}</td>
                     <td>{{ student.username }}</td>
+                    <td>{{ student.status }}</td>
+                    <td>{{ student.active_time }}</td>
                 </tr>
             {% endfor %}
         </tbody>

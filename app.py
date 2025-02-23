@@ -4,6 +4,7 @@ import re
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import csv
+from datetime import datetime,timedelta
 app = Flask(__name__)
 
 # Provide a default database URI (required for SQLAlchemy to work)
@@ -28,14 +29,16 @@ class Admin(db.Model):
     password = db.Column(db.String(100), nullable=False)
     session_active = db.Column(db.Boolean, default=False) 
 
+# Update the Student model
 class Student(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-    is_logged_in = db.Column(db.Boolean, default=False)  # New column
-  
+    is_logged_in = db.Column(db.Boolean, default=False)
+    login_time = db.Column(db.DateTime)  # New column
+    last_active_time = db.Column(db.DateTime)  # New column
 # Correct usage of db.create_all()
 with app.app_context():
     db.create_all()  # This will create tables for all bound databases
@@ -118,7 +121,6 @@ def login_admin():
 
     return render_template('login-admin.html')
 
-
 @app.route('/admin_dashboard')
 def admin_dashboard():
     if 'admin_id' not in session:
@@ -126,10 +128,36 @@ def admin_dashboard():
         return redirect(url_for('login_admin'))
 
     admin = Admin.query.filter_by(id=session['admin_id']).first()
-    students_present = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
+    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
+    
+    students_with_status = []
+    current_time = datetime.now()
+    for student in students:
+        status = 'Inactive'
+        active_time = timedelta(0)
+        
+        if student.login_time:
+            if student.last_active_time and (current_time - student.last_active_time) <= timedelta(minutes=5):
+                status = 'Active'
+                active_time = current_time - student.login_time
+            else:
+                active_time = (student.last_active_time - student.login_time) if student.last_active_time else timedelta(0)
+            
+            total_seconds = int(active_time.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            active_time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+        else:
+            active_time_str = "00:00:00"
+        
+        students_with_status.append({
+            'student_id': student.student_id,
+            'username': student.username,
+            'status': status,
+            'active_time': active_time_str
+        })
 
-    return render_template('admin-dashboard.html', students_present=students_present, session_active=admin.session_active)
-
+    return render_template('admin-dashboard.html', students_present=students_with_status, session_active=admin.session_active)
 @app.route('/start_session', methods=['POST'])
 def start_session():
     if 'admin_id' in session:
@@ -139,23 +167,55 @@ def start_session():
         return jsonify({"message": "Session started successfully!"})
     return jsonify({"error": "Unauthorized"}), 403
 
+# Update the end_session route
 @app.route('/end_session', methods=['POST'])
 def end_session():
     if 'admin_id' in session:
         admin = Admin.query.filter_by(id=session['admin_id']).first()
         admin.session_active = False
 
-        # Log out all students
-        Student.query.update({"is_logged_in": False})
+        # Reset all student sessions and times
+        Student.query.update({
+            "is_logged_in": False,
+            "login_time": None,
+            "last_active_time": None
+        })
         db.session.commit()
 
         return jsonify({"message": "Session ended and database reset!"})
     return jsonify({"error": "Unauthorized"}), 403
-
+# Modify the /active_students route
 @app.route('/active_students')
 def active_students():
     students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
-    student_data = [{"student_id": s.student_id, "username": s.username} for s in students]
+    student_data = []
+    current_time = datetime.now()
+    
+    for student in students:
+        status = 'Inactive'
+        active_time = timedelta(0)
+        
+        if student.login_time:
+            if student.last_active_time and (current_time - student.last_active_time) <= timedelta(minutes=5):
+                status = 'Active'
+                active_time = current_time - student.login_time
+            else:
+                active_time = (student.last_active_time - student.login_time) if student.last_active_time else timedelta(0)
+            
+            total_seconds = int(active_time.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            active_time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+        else:
+            active_time_str = "00:00:00"
+        
+        student_data.append({
+            "student_id": student.student_id,
+            "username": student.username,
+            "status": status,
+            "active_time": active_time_str
+        })
+    
     return jsonify(student_data)
 
 @app.route('/download_attendance')
@@ -210,17 +270,17 @@ def login_student():
 
         student = Student.query.filter_by(username=username).first()
         if student and bcrypt.check_password_hash(student.password, password):
-            session['student_id'] = student.student_id  # Store student session
-            student.is_logged_in = True  # Mark student as logged in
+            session['student_id'] = student.student_id
+            student.is_logged_in = True
+            student.login_time = datetime.now()
+            student.last_active_time = datetime.now()
             db.session.commit()
-
             flash("Login successful!", "success")
             return redirect(url_for('student_dashboard'))
         else:
             flash("Invalid username or password!", "danger")
 
     return render_template('login-student.html')
-
 
 # Student Dashboard (Protected Route)
 @app.route('/student_dashboard')
@@ -237,14 +297,24 @@ def logout():
     if 'student_id' in session:
         student = Student.query.filter_by(student_id=session['student_id']).first()
         if student:
-            student.is_logged_in = False  # Mark student as logged out
+            student.is_logged_in = False
+            student.login_time = None
+            student.last_active_time = None
             db.session.commit()
-
     session.clear()
     flash("Logged out successfully!", "success")
     return redirect(url_for('login_student'))
 
-
+# Add a new route for activity updates
+@app.route('/update_activity', methods=['POST'])
+def update_activity():
+    if 'student_id' in session:
+        student = Student.query.filter_by(student_id=session['student_id']).first()
+        if student and student.is_logged_in:
+            student.last_active_time = datetime.now()
+            db.session.commit()
+            return jsonify({"success": True})
+    return jsonify({"success": False}), 401
 
 
 if __name__ == '__main__':
