@@ -282,8 +282,14 @@ def login_student():
         if student and bcrypt.check_password_hash(student.password, password):
             session['student_id'] = student.student_id
             student.is_logged_in = True
-            student.login_time = datetime.now()
+
+            # Set login_time only if it's not already set (first login of session)
+            if not student.login_time:
+                student.login_time = datetime.now()
+
+            # Always update last_active_time on login
             student.last_active_time = datetime.now()
+
             db.session.commit()
             flash("Login successful!", "success")
             return redirect(url_for('student_dashboard'))
@@ -320,11 +326,16 @@ def logout():
 def update_activity():
     if 'student_id' in session:
         student = Student.query.filter_by(student_id=session['student_id']).first()
+        
         if student and student.is_logged_in:
+            if not student.login_time:
+                student.login_time = datetime.now()  # Ensure login_time is set
             student.last_active_time = datetime.now()
             db.session.commit()
             return jsonify({"success": True})
+    
     return jsonify({"success": False}), 401
+
 
 
 if __name__ == '__main__':
