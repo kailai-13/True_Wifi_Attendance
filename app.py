@@ -225,9 +225,19 @@ def download_attendance():
     
     with open(file_path, "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["Student ID", "Username"])
+        writer.writerow(["Student ID", "Username", "Login Time", "Last Active Time", "Active Duration (minutes)"])
+        
         for student in students:
-            writer.writerow([student.student_id, student.username])
+            login_time = student.login_time.strftime("%Y-%m-%d %H:%M:%S") if student.login_time else "N/A"
+            last_active_time = student.last_active_time.strftime("%Y-%m-%d %H:%M:%S") if student.last_active_time else "N/A"
+            
+            if student.login_time and student.last_active_time:
+                active_duration = (student.last_active_time - student.login_time).total_seconds() / 60  # Convert to minutes
+                active_duration = round(active_duration, 2)
+            else:
+                active_duration = "N/A"
+
+            writer.writerow([student.student_id, student.username, login_time, last_active_time, active_duration])
     
     return send_file(file_path, as_attachment=True)
 
