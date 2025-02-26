@@ -42,7 +42,7 @@ class Student(db.Model):
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-    fingerprint_template = db.Column(db.LargeBinary)  # Encrypted fingerprint data
+    fingerprint_template = db.Column(db.String(500), unique=True)  # Store fingerprint data
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
     last_active_time = db.Column(db.DateTime)
@@ -265,7 +265,6 @@ def download_attendance():
             writer.writerow([student.student_id, student.username, login_time, last_active_time, active_duration])
     
     return send_file(file_path, as_attachment=True)
-
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
@@ -275,34 +274,31 @@ def register_student():
         fingerprint_data = request.form['fingerprint_data']
 
         # Check if student already exists
-        with app.app_context():
-            existing_student = Student.query.filter(
-                (Student.student_id == student_id) | (Student.username == username)
-            ).first()
+        existing_student = Student.query.filter(
+            (Student.student_id == student_id) | (Student.username == username)
+        ).first()
 
-            if existing_student:
-                flash("Student ID or username already exists!", "danger")
-                return redirect(url_for('register_student'))
+        if existing_student:
+            flash("Student ID or username already exists!", "danger")
+            return redirect(url_for('register_student'))
 
-            # Hash password
-            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-            encrypted_fp = cipher_suite.encrypt(fingerprint_data.encode())
+        # Hash password
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-            # Save student to database
-            new_student = Student(
+        # Save student with fingerprint data
+        new_student = Student(
             student_id=student_id,
             username=username,
             password=hashed_password,
-            fingerprint_template=encrypted_fp
+            fingerprint_template=fingerprint_data
         )
-            db.session.add(new_student)
-            db.session.commit()
+        db.session.add(new_student)
+        db.session.commit()
 
         flash("Student registered successfully!", "success")
         return redirect(url_for('login_student'))
 
     return render_template('register-student.html')
-
 
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
@@ -393,13 +389,16 @@ def update_activity():
 def login_fingerprint():
     fingerprint_data = request.json.get('fingerprint_data')
     
-    students = Student.query.all()
-    for student in students:
-        if student.fingerprint_template:
-            decrypted_fp = cipher_suite.decrypt(student.fingerprint_template).decode()
-            if decrypted_fp == fingerprint_data:
-                # Existing login logic
-                return jsonify({"success": True})
+    # Find student with matching fingerprint
+    student = Student.query.filter_by(fingerprint_template=fingerprint_data).first()
+    
+    if student:
+        session['student_id'] = student.student_id
+        student.is_logged_in = True
+        student.login_time = datetime.now()
+        student.last_active_time = datetime.now()
+        db.session.commit()
+        return jsonify({"success": True})
     
     return jsonify({"success": False, "error": "Fingerprint not recognized"})
 
