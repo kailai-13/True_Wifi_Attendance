@@ -42,7 +42,7 @@ class Student(db.Model):
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-    fingerprint_template = db.Column(db.String(500), unique=True)  # Store fingerprint data
+    
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
     last_active_time = db.Column(db.DateTime)
@@ -271,7 +271,7 @@ def register_student():
         student_id = request.form['student_id']
         username = request.form['username']
         password = request.form['password']
-        fingerprint_data = request.form['fingerprint_data']
+        
 
         # Check if student already exists
         existing_student = Student.query.filter(
@@ -290,7 +290,7 @@ def register_student():
             student_id=student_id,
             username=username,
             password=hashed_password,
-            fingerprint_template=fingerprint_data
+          
         )
         db.session.add(new_student)
         db.session.commit()
