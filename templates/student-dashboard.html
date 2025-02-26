@@ -7,7 +7,7 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
         function logoutOnDisconnect() {
-            fetch("/logout_student", { method: "POST" });
+            fetch("/logout", { method: "POST" });
         }
         window.addEventListener("beforeunload", logoutOnDisconnect);
     </script>
@@ -23,7 +23,7 @@
         <p>Your Student ID: <strong>{{ student.student_id }}</strong></p>
         
         <div class="button-group">
-            <a href="{{ url_for('download_history') }}" class="btn">Download Attendance History</a>
+        
             <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
     </div>
 </div>

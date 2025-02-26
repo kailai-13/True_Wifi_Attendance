@@ -41,14 +41,7 @@ class Student(db.Model):
     login_time = db.Column(db.DateTime)  # New column
     last_active_time = db.Column(db.DateTime)  # New column
 
-# Add this after the Student model definition
-class AttendanceRecord(db.Model):
-    __bind_key__ = 'student_db'
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.String(50), db.ForeignKey('student.student_id'))
-    login_time = db.Column(db.DateTime)
-    logout_time = db.Column(db.DateTime)
-    active_duration = db.Column(db.Float)  # Duration in minutes
+
 # Correct usage of db.create_all()
 with app.app_context():
     db.create_all()  # This will create tables for all bound databases
@@ -356,47 +349,26 @@ def logout():
     return redirect(url_for('login_student'))
 
 # Add a new route for activity updates
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 @app.route('/update_activity', methods=['POST'])
 def update_activity():
-    if 'student_id' in session:
-        student = Student.query.filter_by(student_id=session['student_id']).first()
-        
-        if student and student.is_logged_in:
-            if not student.login_time:
-                student.login_time = datetime.now()  # Ensure login_time is set
-            student.last_active_time = datetime.now()
-            db.session.commit()
-            return jsonify({"success": True})
-    
-    return jsonify({"success": False}), 401
-
-
-@app.route('/download_history')
-def download_history():
     if 'student_id' not in session:
-        flash("Please log in first!", "warning")
-        return redirect(url_for('login_student'))
+        logging.warning("Unauthorized access to /update_activity")
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    # Rest of the code
 
-    student_id = session['student_id']
-    records = AttendanceRecord.query.filter_by(student_id=student_id).all()
+    student = Student.query.filter_by(student_id=session['student_id']).first()
+    if student and student.is_logged_in:
+        if not student.login_time:
+            student.login_time = datetime.now()
+        student.last_active_time = datetime.now()
+        db.session.commit()
+        return jsonify({"success": True})
+    
+    return jsonify({"success": False, "error": "Student not logged in"}), 400
 
-    if not records:
-        flash("No attendance history available.", "info")
-        return redirect(url_for('student_dashboard'))
-
-    # Create CSV
-    filename = f"attendance_history_{student_id}.csv"
-    with open(filename, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Login Time", "Logout Time", "Duration (minutes)"])
-        
-        for record in records:
-            login_time = record.login_time.strftime("%Y-%m-%d %H:%M:%S") if record.login_time else "N/A"
-            logout_time = record.logout_time.strftime("%Y-%m-%d %H:%M:%S") if record.logout_time else "N/A"
-            duration = f"{record.active_duration:.2f}" if record.active_duration else "N/A"
-            writer.writerow([login_time, logout_time, duration])
-
-    return send_file(filename, as_attachment=True)
 
 
 if __name__ == '__main__':
