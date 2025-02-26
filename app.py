@@ -5,6 +5,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import csv
 from datetime import datetime,timedelta
+from cryptography.fernet import Fernet  # Add at top
+
+# Generate a key (do this once and store securely)
+KEY = Fernet.generate_key()
+cipher_suite = Fernet(KEY)
 app = Flask(__name__)
 
 # Provide a default database URI (required for SQLAlchemy to work)
@@ -37,11 +42,18 @@ class Student(db.Model):
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
+    fingerprint_template = db.Column(db.LargeBinary)  # Encrypted fingerprint data
     is_logged_in = db.Column(db.Boolean, default=False)
-    login_time = db.Column(db.DateTime)  # New column
-    last_active_time = db.Column(db.DateTime)  # New column
-
-
+    login_time = db.Column(db.DateTime)
+    last_active_time = db.Column(db.DateTime)
+# Add this after the Student model definition
+class AttendanceRecord(db.Model):
+    __bind_key__ = 'student_db'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(50), db.ForeignKey('student.student_id'))
+    login_time = db.Column(db.DateTime)
+    logout_time = db.Column(db.DateTime)
+    active_duration = db.Column(db.Float)  # Duration in minutes
 # Correct usage of db.create_all()
 with app.app_context():
     db.create_all()  # This will create tables for all bound databases
@@ -260,6 +272,7 @@ def register_student():
         student_id = request.form['student_id']
         username = request.form['username']
         password = request.form['password']
+        fingerprint_data = request.form['fingerprint_data']
 
         # Check if student already exists
         with app.app_context():
@@ -273,9 +286,15 @@ def register_student():
 
             # Hash password
             hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+            encrypted_fp = cipher_suite.encrypt(fingerprint_data.encode())
 
             # Save student to database
-            new_student = Student(student_id=student_id, username=username, password=hashed_password)
+            new_student = Student(
+            student_id=student_id,
+            username=username,
+            password=hashed_password,
+            fingerprint_template=encrypted_fp
+        )
             db.session.add(new_student)
             db.session.commit()
 
@@ -369,6 +388,20 @@ def update_activity():
     
     return jsonify({"success": False, "error": "Student not logged in"}), 400
 
+
+@app.route('/login_fingerprint', methods=['POST'])
+def login_fingerprint():
+    fingerprint_data = request.json.get('fingerprint_data')
+    
+    students = Student.query.all()
+    for student in students:
+        if student.fingerprint_template:
+            decrypted_fp = cipher_suite.decrypt(student.fingerprint_template).decode()
+            if decrypted_fp == fingerprint_data:
+                # Existing login logic
+                return jsonify({"success": True})
+    
+    return jsonify({"success": False, "error": "Fingerprint not recognized"})
 
 
 if __name__ == '__main__':

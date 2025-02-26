@@ -20,11 +20,15 @@
     <!-- Add this button near the logout button -->
     <div class="container">
         <h2>Welcome, {{ student.username }}!</h2>
-        <p>Your Student ID: <strong>{{ student.student_id }}</strong></p>
+        <p>Student ID: <strong>{{ student.student_id }}</strong></p>
+        <p>Fingerprint Registered: 
+            <strong>{{ "Yes" if student.fingerprint_template else "No" }}</strong>
+        </p>
         
         <div class="button-group">
         
             <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
+        </div>
     </div>
 </div>
 

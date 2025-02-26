@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+    <script>
+        function captureFingerprint() {
+            // Simulated fingerprint capture
+            const fingerprintData = "SIMULATED_FP_" + Math.random().toString(36).substr(2, 9);
+            document.getElementById('fingerprint_data').value = fingerprintData;
+            alert("Fingerprint captured!");
+        }
+    </script>
 >
     <title>Student Registration</title>
 </head>
@@ -26,6 +34,9 @@
         
         <label>Password:</label>
         <input type="password" name="password" required><br><br>
+        <label>Fingerprint:</label>
+        <button type="button" onclick="captureFingerprint()">Scan Fingerprint</button>
+        <input type="hidden" name="fingerprint_data" id="fingerprint_data" required>
 
         <button type="submit">Register</button>
     </form>

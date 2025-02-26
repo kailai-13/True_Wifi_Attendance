@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+    <script>
+        function fingerprintLogin() {
+            // Simulated fingerprint capture
+            const fingerprintData = "SIMULATED_FP_DATA";
+            fetch('/login_fingerprint', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({fingerprint_data: fingerprintData})
+            }).then(response => response.json())
+              .then(data => {
+                  if(data.success) window.location.href = '/student_dashboard';
+                  else alert('Fingerprint login failed');
+              });
+        }
+    </script>
 
     <title>Student Login</title>
 </head>
@@ -26,5 +41,9 @@
 
         <button type="submit">Login</button>
     </form>
+    <div class="fingerprint-login">
+        <h3>Or login with fingerprint</h3>
+        <button onclick="fingerprintLogin()">Scan Fingerprint</button>
+    </div>
 </body>
 </html>
