@@ -13,7 +13,8 @@ import os
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
-
+face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+face_recognizer = cv2.face.LBPHFaceRecognizer_create()
 # Generate a key (do this once and store securely)
 KEY = Fernet.generate_key()
 cipher_suite = Fernet(KEY)
@@ -91,7 +92,42 @@ def get_wifi_bssid():
         return match.group(1) if match else "BSSID not found"
     except Exception as e:
         return str(e)
+def retrain_face_recognizer():
+    """Retrain the face recognition model with all registered students"""
+    students = Student.query.all()
+    faces = []
+    labels = []
 
+    for student in students:
+        if student.face_encoding:
+            try:
+                # Decode stored face image
+                face_bytes = base64.b64decode(student.face_encoding)
+                np_arr = np.frombuffer(face_bytes, np.uint8)
+                face_img = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE)
+                
+                faces.append(face_img)
+                labels.append(student.id)  # Use database ID as label
+            except Exception as e:
+                print(f"Error processing face for student {student.id}: {e}")
+
+    if len(faces) > 0:
+        face_recognizer.train(faces, np.array(labels, dtype=np.int32))
+        face_recognizer.save('face_model.yml')
+        print("Face recognizer retrained successfully")
+    else:
+        print("No faces found for training")
+
+# Initialize or load face recognizer on startup
+with app.app_context():
+    db.create_all()
+    try:
+        if os.path.exists('face_model.yml'):
+            face_recognizer.read('face_model.yml')
+        else:
+            retrain_face_recognizer()
+    except Exception as e:
+        print(f"Error initializing face recognizer: {e}")
 @app.route('/')
 def index():
     bssid1 = get_wifi_bssid()
@@ -316,56 +352,42 @@ def process_face_image(image_data):
 def verify_face(student_id, image_data):
     """Verify if the captured face matches the stored face"""
     try:
-        # Get stored face
+        # Load pre-trained model
+        face_recognizer.read('face_model.yml')
+
+        # Get student by student_id
         student = Student.query.filter_by(student_id=student_id).first()
         if not student or not student.face_encoding:
-            return False, "No face data found"
-        
-        # Process current face
+            return False, "Student not found or no face data"
+
+        # Process submitted image
         image_data = image_data.split(',')[1]
         image_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        
-        # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
+
         # Detect face
         faces = face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-        
-        if len(faces) == 0:
-            return False, "No face detected"
-        
-        if len(faces) > 1:
-            return False, "Multiple faces detected"
-        
-        # Extract face
+        if len(faces) != 1:
+            return False, "No or multiple faces detected"
+
+        # Process face
         x, y, w, h = faces[0]
         face_img = gray[y:y+h, x:x+w]
         face_img = cv2.resize(face_img, (100, 100))
-        
-        # Decode stored face
-        stored_face_bytes = base64.b64decode(student.face_encoding)
-        np_arr = np.frombuffer(stored_face_bytes, np.uint8)
-        stored_face = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE)
-        
-        # Compare faces using LBPH
-        # First, we need to ensure the recognizer is trained with this face
-        label = int(student.id)  # Use student ID as label
-        face_recognizer.train([stored_face], np.array([label]))
-        
-        # Now predict
+
+        # Predict using pre-trained model
         label, confidence = face_recognizer.predict(face_img)
-        
-        # Lower confidence value means better match
-        if confidence < 70:  # Threshold can be adjusted
+
+        # Verify prediction matches student ID
+        if label == student.id and confidence < 70:
             return True, "Face verified"
         else:
-            return False, f"Face verification failed (confidence: {confidence})"
-            
+            return False, f"Verification failed (confidence: {confidence})"
+
     except Exception as e:
         return False, str(e)
-
 # Modified student registration to capture face
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
@@ -402,6 +424,7 @@ def register_student():
         )
         db.session.add(new_student)
         db.session.commit()
+        retrain_face_recognizer()
 
         flash("Student registered successfully!", "success")
         return redirect(url_for('login_student'))
