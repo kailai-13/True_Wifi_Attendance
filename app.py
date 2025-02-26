@@ -385,23 +385,6 @@ def update_activity():
     return jsonify({"success": False, "error": "Student not logged in"}), 400
 
 
-@app.route('/login_fingerprint', methods=['POST'])
-def login_fingerprint():
-    fingerprint_data = request.json.get('fingerprint_data')
-    
-    # Find student with matching fingerprint
-    student = Student.query.filter_by(fingerprint_template=fingerprint_data).first()
-    
-    if student:
-        session['student_id'] = student.student_id
-        student.is_logged_in = True
-        student.login_time = datetime.now()
-        student.last_active_time = datetime.now()
-        db.session.commit()
-        return jsonify({"success": True})
-    
-    return jsonify({"success": False, "error": "Fingerprint not recognized"})
-
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
