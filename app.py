@@ -4,8 +4,15 @@ import re
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import csv
-from datetime import datetime,timedelta
-from cryptography.fernet import Fernet  # Add at top
+from datetime import datetime, timedelta
+from cryptography.fernet import Fernet
+import numpy as np
+import cv2
+import base64
+import os
+
+# Create directory for storing face images if it doesn't exist
+os.makedirs('face_data', exist_ok=True)
 
 # Generate a key (do this once and store securely)
 KEY = Fernet.generate_key()
@@ -13,16 +20,15 @@ cipher_suite = Fernet(KEY)
 app = Flask(__name__)
 
 # Provide a default database URI (required for SQLAlchemy to work)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///default.db'  # This is needed, even if you are using binds.
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///default.db'
 
 # Define multiple database bindings
 app.config['SQLALCHEMY_BINDS'] = {
     'admin_db': 'sqlite:///admin.db',
     'student_db': 'sqlite:///students.db',
-    
 }
 
-app.config['SECRET_KEY'] = 'supersecretkey'  # Needed for flash messages
+app.config['SECRET_KEY'] = 'supersecretkey'
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
@@ -35,18 +41,19 @@ class Admin(db.Model):
     password = db.Column(db.String(100), nullable=False)
     session_active = db.Column(db.Boolean, default=False) 
 
-# Update the Student model
+# Update the Student model with face_encoding field
 class Student(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
+    face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
     
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
     last_active_time = db.Column(db.DateTime)
-# Add this after the Student model definition
+
 class AttendanceRecord(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -54,9 +61,19 @@ class AttendanceRecord(db.Model):
     login_time = db.Column(db.DateTime)
     logout_time = db.Column(db.DateTime)
     active_duration = db.Column(db.Float)  # Duration in minutes
-# Correct usage of db.create_all()
+
+# Initialize face recognition
+face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+
+# Create database tables
 with app.app_context():
-    db.create_all()  # This will create tables for all bound databases
+    db.create_all()
+    # Train face recognizer with existing faces
+    try:
+        face_recognizer.read('face_model.yml')
+    except:
+        pass  # No model yet
 
 # Function to get connected WiFi BSSID
 def get_wifi_bssid():
@@ -75,14 +92,12 @@ def get_wifi_bssid():
     except Exception as e:
         return str(e)
 
-
 @app.route('/')
 def index():
     bssid1 = get_wifi_bssid()
     return render_template('index.html', bssid1=bssid1)
 
-
-# Admin Registration Route
+# Admin Registration and Login routes remain unchanged
 @app.route('/register_admin', methods=['GET', 'POST'])
 def register_admin():
     if request.method == 'POST':
@@ -95,7 +110,6 @@ def register_admin():
             flash("Invalid secret key! Registration failed.", "danger")
             return redirect(url_for('register_admin'))
 
-        # Check if admin already exists
         with app.app_context():
             existing_admin = Admin.query.filter(
                 (Admin.idname == idname) | (Admin.username == username)
@@ -105,10 +119,7 @@ def register_admin():
                 flash("Admin ID or username already exists!", "danger")
                 return redirect(url_for('register_admin'))
 
-            # Hash the password
             hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-
-            # Save admin to database
             new_admin = Admin(idname=idname, username=username, password=hashed_password)
             db.session.add(new_admin)
             db.session.commit()
@@ -118,8 +129,6 @@ def register_admin():
 
     return render_template('register-admin.html')
 
-
-# Admin Login Route
 @app.route('/login_admin', methods=['GET', 'POST'])
 def login_admin():
     if request.method == 'POST':
@@ -136,6 +145,7 @@ def login_admin():
 
     return render_template('login-admin.html')
 
+# Admin dashboard and related routes remain largely unchanged
 @app.route('/admin_dashboard')
 def admin_dashboard():
     if 'admin_id' not in session:
@@ -173,6 +183,7 @@ def admin_dashboard():
         })
 
     return render_template('admin-dashboard.html', students_present=students_with_status, session_active=admin.session_active)
+
 @app.route('/start_session', methods=['POST'])
 def start_session():
     if 'admin_id' in session:
@@ -182,14 +193,12 @@ def start_session():
         return jsonify({"message": "Session started successfully!"})
     return jsonify({"error": "Unauthorized"}), 403
 
-# Modify the existing end_session route
 @app.route('/end_session', methods=['POST'])
 def end_session():
     if 'admin_id' in session:
         admin = Admin.query.filter_by(id=session['admin_id']).first()
         admin.session_active = False
 
-        # Save attendance records for all logged-in students
         logged_in_students = Student.query.filter_by(is_logged_in=True).all()
         for student in logged_in_students:
             if student.login_time and student.last_active_time:
@@ -202,7 +211,6 @@ def end_session():
                 )
                 db.session.add(record)
 
-            # Reset student session
             student.is_logged_in = False
             student.login_time = None
             student.last_active_time = None
@@ -210,6 +218,7 @@ def end_session():
         db.session.commit()
         return jsonify({"message": "Session ended and attendance records saved!"})
     return jsonify({"error": "Unauthorized"}), 403
+
 @app.route('/active_students')
 def active_students():
     students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
@@ -265,14 +274,107 @@ def download_attendance():
             writer.writerow([student.student_id, student.username, login_time, last_active_time, active_duration])
     
     return send_file(file_path, as_attachment=True)
+
+# Face recognition helper functions
+def process_face_image(image_data):
+    """Process base64 image data and extract face encoding"""
+    try:
+        # Decode base64 image
+        image_data = image_data.split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        # Convert to grayscale for face detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces
+        faces = face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        if len(faces) == 0:
+            return None, "No face detected"
+        
+        if len(faces) > 1:
+            return None, "Multiple faces detected"
+        
+        # Extract the face region
+        x, y, w, h = faces[0]
+        face_img = gray[y:y+h, x:x+w]
+        
+        # Resize to standard size
+        face_img = cv2.resize(face_img, (100, 100))
+        
+        # Encode the face image to base64 for storage
+        _, buffer = cv2.imencode('.jpg', face_img)
+        face_encoded = base64.b64encode(buffer).decode('utf-8')
+        
+        # Save face image for training
+        return face_encoded, "Success"
+    except Exception as e:
+        return None, str(e)
+
+def verify_face(student_id, image_data):
+    """Verify if the captured face matches the stored face"""
+    try:
+        # Get stored face
+        student = Student.query.filter_by(student_id=student_id).first()
+        if not student or not student.face_encoding:
+            return False, "No face data found"
+        
+        # Process current face
+        image_data = image_data.split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Detect face
+        faces = face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        if len(faces) == 0:
+            return False, "No face detected"
+        
+        if len(faces) > 1:
+            return False, "Multiple faces detected"
+        
+        # Extract face
+        x, y, w, h = faces[0]
+        face_img = gray[y:y+h, x:x+w]
+        face_img = cv2.resize(face_img, (100, 100))
+        
+        # Decode stored face
+        stored_face_bytes = base64.b64decode(student.face_encoding)
+        np_arr = np.frombuffer(stored_face_bytes, np.uint8)
+        stored_face = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE)
+        
+        # Compare faces using LBPH
+        # First, we need to ensure the recognizer is trained with this face
+        label = int(student.id)  # Use student ID as label
+        face_recognizer.train([stored_face], np.array([label]))
+        
+        # Now predict
+        label, confidence = face_recognizer.predict(face_img)
+        
+        # Lower confidence value means better match
+        if confidence < 70:  # Threshold can be adjusted
+            return True, "Face verified"
+        else:
+            return False, f"Face verification failed (confidence: {confidence})"
+            
+    except Exception as e:
+        return False, str(e)
+
+# Modified student registration to capture face
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
         student_id = request.form['student_id']
         username = request.form['username']
         password = request.form['password']
+        face_image = request.form['face_image']
         
-
         # Check if student already exists
         existing_student = Student.query.filter(
             (Student.student_id == student_id) | (Student.username == username)
@@ -281,16 +383,22 @@ def register_student():
         if existing_student:
             flash("Student ID or username already exists!", "danger")
             return redirect(url_for('register_student'))
+        
+        # Process face image
+        face_encoding, message = process_face_image(face_image)
+        if not face_encoding:
+            flash(f"Face registration failed: {message}", "danger")
+            return redirect(url_for('register_student'))
 
         # Hash password
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        # Save student with fingerprint data
+        # Save student with face data
         new_student = Student(
             student_id=student_id,
             username=username,
             password=hashed_password,
-          
+            face_encoding=face_encoding
         )
         db.session.add(new_student)
         db.session.commit()
@@ -300,29 +408,47 @@ def register_student():
 
     return render_template('register-student.html')
 
+# Modified student login to verify face
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+        face_image = request.form.get('face_image')
 
         student = Student.query.filter_by(username=username).first()
-        if student and bcrypt.check_password_hash(student.password, password):
-            session['student_id'] = student.student_id
-            student.is_logged_in = True
-
-            # Set login_time only if it's not already set (first login of session)
-            if not student.login_time:
-                student.login_time = datetime.now()
-
-            # Always update last_active_time on login
-            student.last_active_time = datetime.now()
-
-            db.session.commit()
-            flash("Login successful!", "success")
-            return redirect(url_for('student_dashboard'))
-        else:
+        if not student:
             flash("Invalid username or password!", "danger")
+            return redirect(url_for('login_student'))
+            
+        if not bcrypt.check_password_hash(student.password, password):
+            flash("Invalid username or password!", "danger")
+            return redirect(url_for('login_student'))
+            
+        # Verify face
+        if not face_image:
+            flash("Face verification required!", "danger")
+            return redirect(url_for('login_student'))
+            
+        is_verified, message = verify_face(student.student_id, face_image)
+        if not is_verified:
+            flash(f"Face verification failed: {message}", "danger")
+            return redirect(url_for('login_student'))
+
+        # Login successful
+        session['student_id'] = student.student_id
+        student.is_logged_in = True
+
+        # Set login_time only if it's not already set (first login of session)
+        if not student.login_time:
+            student.login_time = datetime.now()
+
+        # Always update last_active_time on login
+        student.last_active_time = datetime.now()
+
+        db.session.commit()
+        flash("Login successful!", "success")
+        return redirect(url_for('student_dashboard'))
 
     return render_template('login-student.html')
 
@@ -336,7 +462,6 @@ def student_dashboard():
     flash("Please log in first!", "warning")
     return redirect(url_for('login_student'))
 
-# Modify the existing logout route
 @app.route('/logout')
 def logout():
     if 'student_id' in session:
@@ -363,16 +488,10 @@ def logout():
         flash("Logged out successfully!", "success")
     return redirect(url_for('login_student'))
 
-# Add a new route for activity updates
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
 @app.route('/update_activity', methods=['POST'])
 def update_activity():
     if 'student_id' not in session:
-        logging.warning("Unauthorized access to /update_activity")
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    # Rest of the code
 
     student = Student.query.filter_by(student_id=session['student_id']).first()
     if student and student.is_logged_in:
@@ -383,8 +502,6 @@ def update_activity():
         return jsonify({"success": True})
     
     return jsonify({"success": False, "error": "Student not logged in"}), 400
-
-
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)

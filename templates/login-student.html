@@ -4,10 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
-    <script>
-
-    </script>
-
     <title>Student Login</title>
 </head>
 <body>
@@ -20,15 +16,61 @@
         {% endif %}
     {% endwith %}
     
-    <form method="POST">
+    <form method="POST" id="login-form">
         <label>Username:</label>
         <input type="text" name="username" required><br><br>
         
         <label>Password:</label>
         <input type="password" name="password" required><br><br>
-
-        <button type="submit">Login</button>
+        
+        <input type="hidden" name="face_image" id="face-image">
+        
+        <div id="camera-container">
+            <h3>Face Verification</h3>
+            <video id="video" width="320" height="240" autoplay></video>
+            <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+            <div>
+                <button type="button" id="capture-btn">Verify Face</button>
+                <p id="capture-status">Please verify your face</p>
+            </div>
+        </div>
+        
+        <button type="submit" id="login-btn" disabled>Login</button>
     </form>
- 
+    
+    <script>
+        // Access webcam
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureBtn = document.getElementById('capture-btn');
+        const loginBtn = document.getElementById('login-btn');
+        const captureStatus = document.getElementById('capture-status');
+        const faceImage = document.getElementById('face-image');
+        
+        // Get access to the webcam
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error('Error accessing camera:', err);
+                captureStatus.textContent = 'Error: Cannot access camera';
+                captureStatus.style.color = 'red';
+            });
+            
+        // Capture image from webcam
+        captureBtn.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+            
+            // Store image data in hidden form field
+            faceImage.value = imageData;
+            
+            captureStatus.textContent = 'Face captured! You can now login.';
+            captureStatus.style.color = 'green';
+            loginBtn.disabled = false;
+        });
+    </script>
 </body>
 </html>
