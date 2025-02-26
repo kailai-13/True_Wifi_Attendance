@@ -13,7 +13,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///default.db'  # This is needed
 # Define multiple database bindings
 app.config['SQLALCHEMY_BINDS'] = {
     'admin_db': 'sqlite:///admin.db',
-    'student_db': 'sqlite:///students.db'
+    'student_db': 'sqlite:///students.db',
+    
 }
 
 app.config['SECRET_KEY'] = 'supersecretkey'  # Needed for flash messages
@@ -39,6 +40,15 @@ class Student(db.Model):
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)  # New column
     last_active_time = db.Column(db.DateTime)  # New column
+
+# Add this after the Student model definition
+class AttendanceRecord(db.Model):
+    __bind_key__ = 'student_db'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.String(50), db.ForeignKey('student.student_id'))
+    login_time = db.Column(db.DateTime)
+    logout_time = db.Column(db.DateTime)
+    active_duration = db.Column(db.Float)  # Duration in minutes
 # Correct usage of db.create_all()
 with app.app_context():
     db.create_all()  # This will create tables for all bound databases
@@ -167,24 +177,34 @@ def start_session():
         return jsonify({"message": "Session started successfully!"})
     return jsonify({"error": "Unauthorized"}), 403
 
-# Update the end_session route
+# Modify the existing end_session route
 @app.route('/end_session', methods=['POST'])
 def end_session():
     if 'admin_id' in session:
         admin = Admin.query.filter_by(id=session['admin_id']).first()
         admin.session_active = False
 
-        # Reset all student sessions and times
-        Student.query.update({
-            "is_logged_in": False,
-            "login_time": None,
-            "last_active_time": None
-        })
-        db.session.commit()
+        # Save attendance records for all logged-in students
+        logged_in_students = Student.query.filter_by(is_logged_in=True).all()
+        for student in logged_in_students:
+            if student.login_time and student.last_active_time:
+                duration = (student.last_active_time - student.login_time).total_seconds() / 60
+                record = AttendanceRecord(
+                    student_id=student.student_id,
+                    login_time=student.login_time,
+                    logout_time=student.last_active_time,
+                    active_duration=duration
+                )
+                db.session.add(record)
 
-        return jsonify({"message": "Session ended and database reset!"})
+            # Reset student session
+            student.is_logged_in = False
+            student.login_time = None
+            student.last_active_time = None
+
+        db.session.commit()
+        return jsonify({"message": "Session ended and attendance records saved!"})
     return jsonify({"error": "Unauthorized"}), 403
-# Modify the /active_students route
 @app.route('/active_students')
 def active_students():
     students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
@@ -308,17 +328,31 @@ def student_dashboard():
     flash("Please log in first!", "warning")
     return redirect(url_for('login_student'))
 
+# Modify the existing logout route
 @app.route('/logout')
 def logout():
     if 'student_id' in session:
         student = Student.query.filter_by(student_id=session['student_id']).first()
-        if student:
+        if student and student.is_logged_in:
+            # Create attendance record
+            if student.login_time and student.last_active_time:
+                duration = (student.last_active_time - student.login_time).total_seconds() / 60
+                record = AttendanceRecord(
+                    student_id=student.student_id,
+                    login_time=student.login_time,
+                    logout_time=student.last_active_time,
+                    active_duration=duration
+                )
+                db.session.add(record)
+            
+            # Clear session data
             student.is_logged_in = False
             student.login_time = None
             student.last_active_time = None
             db.session.commit()
-    session.clear()
-    flash("Logged out successfully!", "success")
+        
+        session.clear()
+        flash("Logged out successfully!", "success")
     return redirect(url_for('login_student'))
 
 # Add a new route for activity updates
@@ -336,6 +370,33 @@ def update_activity():
     
     return jsonify({"success": False}), 401
 
+
+@app.route('/download_history')
+def download_history():
+    if 'student_id' not in session:
+        flash("Please log in first!", "warning")
+        return redirect(url_for('login_student'))
+
+    student_id = session['student_id']
+    records = AttendanceRecord.query.filter_by(student_id=student_id).all()
+
+    if not records:
+        flash("No attendance history available.", "info")
+        return redirect(url_for('student_dashboard'))
+
+    # Create CSV
+    filename = f"attendance_history_{student_id}.csv"
+    with open(filename, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Login Time", "Logout Time", "Duration (minutes)"])
+        
+        for record in records:
+            login_time = record.login_time.strftime("%Y-%m-%d %H:%M:%S") if record.login_time else "N/A"
+            logout_time = record.logout_time.strftime("%Y-%m-%d %H:%M:%S") if record.logout_time else "N/A"
+            duration = f"{record.active_duration:.2f}" if record.active_duration else "N/A"
+            writer.writerow([login_time, logout_time, duration])
+
+    return send_file(filename, as_attachment=True)
 
 
 if __name__ == '__main__':

@@ -17,12 +17,16 @@
 
 <body>
 
+    <!-- Add this button near the logout button -->
     <div class="container">
         <h2>Welcome, {{ student.username }}!</h2>
         <p>Your Student ID: <strong>{{ student.student_id }}</strong></p>
-
-        <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        
+        <div class="button-group">
+            <a href="{{ url_for('download_history') }}" class="btn">Download Attendance History</a>
+            <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
     </div>
+</div>
 
 </body>
 </html>
