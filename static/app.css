@@ -425,7 +425,7 @@
   }
   
   /* Theme toggle */
-  .theme-toggle {
+  button .theme-toggle {
     position: fixed;
     top: 1rem;
     right: 1rem;
@@ -449,7 +449,7 @@
   }
   
   .theme-icon {
-    display: inline-block;
+    display: flex ;
   }
   
   [data-theme="dark"] .theme-icon {
