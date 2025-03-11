@@ -3,45 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
-
     <title>WiFi BSSID Detector</title>
-    
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-          const themeToggle = document.querySelector('.theme-toggle');
-          const body = document.body;
-      
-          // Check for saved theme in localStorage
-          const savedTheme = localStorage.getItem('theme');
-          if (savedTheme) {
-            body.setAttribute('data-theme', savedTheme);
-          }
-      
-          // Toggle theme on button click
-          themeToggle.addEventListener('click', () => {
-            const currentTheme = body.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            body.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme); // Save theme to localStorage
-          });
+            const themeToggle = document.querySelector('.theme-toggle');
+            const body = document.body;
+
+            // Check for saved theme in localStorage
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                body.setAttribute('data-theme', savedTheme);
+            }
+
+            // Toggle theme on button click
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = body.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                body.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme); // Save theme to localStorage
+            });
         });
-      </script>
+    </script>
 </head>
 <body>
-    <h2>Connected WiFi BSSID </h2><br>
-    <div class="container">
-    <button class="theme-toggle">
-            <span class="theme-icon">🌙</span> <!-- Moon icon for dark mode -->
-    </button>
     
-    <button><a href="{{ url_for('register_admin') }}">REGISTER FOR ADMIN</a></button><br>
-  
-    <button><a href="{{ url_for('login_admin') }}">LOGIN FOR ADMIN</a></button><br>
-    <button><a href="{{ url_for('register_student') }}">REGISTER FOR STUDENT</a></button><br>
-  
-    <button><a href="{{ url_for('login_student') }}">LOGIN FOR STUDENT</a></button>
-    </div>
+    <div class="container">
+        <button class="theme-toggle">
+            <span class="theme-icon">🌙</span> <!-- Moon icon for dark mode -->
+        </button>
 
+        <button><a href="{{ url_for('register_admin') }}">REGISTER FOR ADMIN</a></button><br>
+        <button><a href="{{ url_for('login_admin') }}">LOGIN FOR ADMIN</a></button><br>
+        <button><a href="{{ url_for('register_student') }}">REGISTER FOR STUDENT</a></button><br>
+        <button><a href="{{ url_for('login_student') }}">LOGIN FOR STUDENT</a></button>
+    </div>
 </body>
 </html>

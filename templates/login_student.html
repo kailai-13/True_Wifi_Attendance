@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
-    <title>Student Registration</title>
+    <title>Student Login</title>
 </head>
 <body>
-    <h2>Register as Student</h2>
+    <h2>Student Login</h2>
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
@@ -15,43 +15,42 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
-    
-    <form method="POST" id="registration-form">
-        <label>Student ID:</label>
-        <input type="text" name="student_id" required><br><br>
-        
+
+    <form method="POST" id="login-form">
         <label>Username:</label>
         <input type="text" name="username" required><br><br>
-        
         <label>Password:</label>
         <input type="password" name="password" required><br><br>
-        
+        <label>Room Code:</label>
+        <select name="room_code" required>
+            {% for room in active_rooms %}
+                <option value="{{ room.room_code }}">{{ room.room_code }}</option>
+            {% endfor %}
+        </select><br><br>
         <input type="hidden" name="face_image" id="face-image">
-        
+
         <div id="camera-container">
-            <h3>Face Registration</h3>
+            <h3>Face Verification</h3>
             <video id="video" width="320" height="240" autoplay></video>
             <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
             <div>
-                <button type="button" id="capture-btn">Capture Face</button>
-                <p id="capture-status">Please capture your face</p>
+                <button type="button" id="capture-btn">Verify Face</button>
+                <p id="capture-status">Please verify your face</p>
             </div>
         </div>
-  
-        <button type="submit" id="register-btn" disabled>Register</button>
+
+        <button type="submit" id="login-btn" disabled>Login</button>
     </form>
 
-    <p>Already a student? <a href="{{ url_for('login_student') }}">Login here</a></p>
-    
     <script>
         // Access webcam
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const captureBtn = document.getElementById('capture-btn');
-        const registerBtn = document.getElementById('register-btn');
+        const loginBtn = document.getElementById('login-btn');
         const captureStatus = document.getElementById('capture-status');
         const faceImage = document.getElementById('face-image');
-        
+
         // Get access to the webcam
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
@@ -62,19 +61,19 @@
                 captureStatus.textContent = 'Error: Cannot access camera';
                 captureStatus.style.color = 'red';
             });
-            
+
         // Capture image from webcam
         captureBtn.addEventListener('click', () => {
             const context = canvas.getContext('2d');
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imageData = canvas.toDataURL('image/jpeg');
-            
+
             // Store image data in hidden form field
             faceImage.value = imageData;
-            
-            captureStatus.textContent = 'Face captured! You can now register.';
+
+            captureStatus.textContent = 'Face captured! You can now login.';
             captureStatus.style.color = 'green';
-            registerBtn.disabled = false;
+            loginBtn.disabled = false;
         });
     </script>
 </body>

@@ -10,24 +10,26 @@
             fetch("/logout", { method: "POST" });
         }
         window.addEventListener("beforeunload", logoutOnDisconnect);
+
+        function sendHeartbeat() {
+            fetch('/update_activity', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => { /* Optional handling */ });
+        }
+        // Send immediately and every 1 minute
+        sendHeartbeat();
+        setInterval(sendHeartbeat, 60000);
     </script>
-    
-
 </head>
-
 <body>
-
-    <!-- Add this button near the logout button -->
     <div class="container">
         <h2>Welcome, {{ student.username }}!</h2>
         <p>Student ID: <strong>{{ student.student_id }}</strong></p>
-   
+        <p>Current Room: <strong>{{ student.current_room }}</strong></p>
+
         <div class="button-group">
-        
             <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
         </div>
     </div>
-</div>
-
 </body>
 </html>

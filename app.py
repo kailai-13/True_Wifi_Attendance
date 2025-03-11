@@ -5,19 +5,18 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import csv
 from datetime import datetime, timedelta
-from cryptography.fernet import Fernet
 import numpy as np
 import cv2
 import base64
 import os
+from ultralytics import YOLO
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
-face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-# Generate a key (do this once and store securely)
-KEY = Fernet.generate_key()
-cipher_suite = Fernet(KEY)
+
+# Load YOLOv8 face detection model
+face_model = YOLO('yolov8n-face.pt')  # Ensure you have the YOLOv8 face model
+
 app = Flask(__name__)
 
 # Provide a default database URI (required for SQLAlchemy to work)
@@ -27,6 +26,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///default.db'
 app.config['SQLALCHEMY_BINDS'] = {
     'admin_db': 'sqlite:///admin.db',
     'student_db': 'sqlite:///students.db',
+    'room_db': 'sqlite:///rooms.db'  # New database for room management
 }
 
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -40,9 +40,20 @@ class Admin(db.Model):
     idname = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-    session_active = db.Column(db.Boolean, default=False) 
+    session_active = db.Column(db.Boolean, default=False)
+    current_bssid = db.Column(db.String(100))  # Store admin's current BSSID
 
-# Update the Student model with face_encoding field
+# Room Table (Stored in room_db)
+class Room(db.Model):
+    __bind_key__ = 'room_db'
+    id = db.Column(db.Integer, primary_key=True)
+    room_code = db.Column(db.String(50), nullable=False, unique=True)
+    admin_id = db.Column(db.Integer, nullable=False)  # ID of admin who created the room
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    active = db.Column(db.Boolean, default=True)
+    bssid = db.Column(db.String(100))  # Store the BSSID when room was created
+
+# Update the Student model with face_encoding field and room info
 class Student(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -50,6 +61,7 @@ class Student(db.Model):
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
     face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
+    current_room = db.Column(db.String(50))  # Store current room code
     
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
@@ -59,22 +71,14 @@ class AttendanceRecord(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.String(50), db.ForeignKey('student.student_id'))
+    room_code = db.Column(db.String(50))  # Added room code to attendance record
     login_time = db.Column(db.DateTime)
     logout_time = db.Column(db.DateTime)
     active_duration = db.Column(db.Float)  # Duration in minutes
 
-# Initialize face recognition
-face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-face_recognizer = cv2.face.LBPHFaceRecognizer_create()
-
 # Create database tables
 with app.app_context():
     db.create_all()
-    # Train face recognizer with existing faces
-    try:
-        face_recognizer.read('face_model.yml')
-    except:
-        pass  # No model yet
 
 # Function to get connected WiFi BSSID
 def get_wifi_bssid():
@@ -92,228 +96,9 @@ def get_wifi_bssid():
         return match.group(1) if match else "BSSID not found"
     except Exception as e:
         return str(e)
-def retrain_face_recognizer():
-    """Retrain the face recognition model with all registered students"""
-    students = Student.query.all()
-    faces = []
-    labels = []
 
-    for student in students:
-        if student.face_encoding:
-            try:
-                # Decode stored face image
-                face_bytes = base64.b64decode(student.face_encoding)
-                np_arr = np.frombuffer(face_bytes, np.uint8)
-                face_img = cv2.imdecode(np_arr, cv2.IMREAD_GRAYSCALE)
-                
-                faces.append(face_img)
-                labels.append(student.id)  # Use database ID as label
-            except Exception as e:
-                print(f"Error processing face for student {student.id}: {e}")
-
-    if len(faces) > 0:
-        face_recognizer.train(faces, np.array(labels, dtype=np.int32))
-        face_recognizer.save('face_model.yml')
-        print("Face recognizer retrained successfully")
-    else:
-        print("No faces found for training")
-
-# Initialize or load face recognizer on startup
-with app.app_context():
-    db.create_all()
-    try:
-        if os.path.exists('face_model.yml'):
-            face_recognizer.read('face_model.yml')
-        else:
-            retrain_face_recognizer()
-    except Exception as e:
-        print(f"Error initializing face recognizer: {e}")
-@app.route('/')
-def index():
-    bssid1 = get_wifi_bssid()
-    return render_template('index.html', bssid1=bssid1)
-
-# Admin Registration and Login routes remain unchanged
-@app.route('/register_admin', methods=['GET', 'POST'])
-def register_admin():
-    if request.method == 'POST':
-        idname = request.form['idname']
-        username = request.form['username']
-        password = request.form['password']
-        secret_key = request.form['secret_key']
-
-        if secret_key != "69420":
-            flash("Invalid secret key! Registration failed.", "danger")
-            return redirect(url_for('register_admin'))
-
-        with app.app_context():
-            existing_admin = Admin.query.filter(
-                (Admin.idname == idname) | (Admin.username == username)
-            ).first()
-
-            if existing_admin:
-                flash("Admin ID or username already exists!", "danger")
-                return redirect(url_for('register_admin'))
-
-            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-            new_admin = Admin(idname=idname, username=username, password=hashed_password)
-            db.session.add(new_admin)
-            db.session.commit()
-
-        flash("Admin registered successfully!", "success")
-        return redirect(url_for('login_admin'))
-
-    return render_template('register-admin.html')
-
-@app.route('/login_admin', methods=['GET', 'POST'])
-def login_admin():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        admin = Admin.query.filter_by(username=username).first()
-        if admin and bcrypt.check_password_hash(admin.password, password):
-            session['admin_id'] = admin.id
-            flash("Login successful!", "success")
-            return redirect(url_for('admin_dashboard'))
-        else:
-            flash("Invalid username or password!", "danger")
-
-    return render_template('login-admin.html')
-
-# Admin dashboard and related routes remain largely unchanged
-@app.route('/admin_dashboard')
-def admin_dashboard():
-    if 'admin_id' not in session:
-        flash("Please log in first!", "warning")
-        return redirect(url_for('login_admin'))
-
-    admin = Admin.query.filter_by(id=session['admin_id']).first()
-    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
-    
-    students_with_status = []
-    current_time = datetime.now()
-    for student in students:
-        status = 'Inactive'
-        active_time = timedelta(0)
-        
-        if student.login_time:
-            if student.last_active_time and (current_time - student.last_active_time) <= timedelta(minutes=5):
-                status = 'Active'
-                active_time = current_time - student.login_time
-            else:
-                active_time = (student.last_active_time - student.login_time) if student.last_active_time else timedelta(0)
-            
-            total_seconds = int(active_time.total_seconds())
-            hours, remainder = divmod(total_seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            active_time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
-        else:
-            active_time_str = "00:00:00"
-        
-        students_with_status.append({
-            'student_id': student.student_id,
-            'username': student.username,
-            'status': status,
-            'active_time': active_time_str
-        })
-
-    return render_template('admin-dashboard.html', students_present=students_with_status, session_active=admin.session_active)
-
-@app.route('/start_session', methods=['POST'])
-def start_session():
-    if 'admin_id' in session:
-        admin = Admin.query.filter_by(id=session['admin_id']).first()
-        admin.session_active = True
-        db.session.commit()
-        return jsonify({"message": "Session started successfully!"})
-    return jsonify({"error": "Unauthorized"}), 403
-
-@app.route('/end_session', methods=['POST'])
-def end_session():
-    if 'admin_id' in session:
-        admin = Admin.query.filter_by(id=session['admin_id']).first()
-        admin.session_active = False
-
-        logged_in_students = Student.query.filter_by(is_logged_in=True).all()
-        for student in logged_in_students:
-            if student.login_time and student.last_active_time:
-                duration = (student.last_active_time - student.login_time).total_seconds() / 60
-                record = AttendanceRecord(
-                    student_id=student.student_id,
-                    login_time=student.login_time,
-                    logout_time=student.last_active_time,
-                    active_duration=duration
-                )
-                db.session.add(record)
-
-            student.is_logged_in = False
-            student.login_time = None
-            student.last_active_time = None
-
-        db.session.commit()
-        return jsonify({"message": "Session ended and attendance records saved!"})
-    return jsonify({"error": "Unauthorized"}), 403
-
-@app.route('/active_students')
-def active_students():
-    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
-    student_data = []
-    current_time = datetime.now()
-    
-    for student in students:
-        status = 'Inactive'
-        active_time = timedelta(0)
-        
-        if student.login_time:
-            if student.last_active_time and (current_time - student.last_active_time) <= timedelta(minutes=5):
-                status = 'Active'
-                active_time = current_time - student.login_time
-            else:
-                active_time = (student.last_active_time - student.login_time) if student.last_active_time else timedelta(0)
-            
-            total_seconds = int(active_time.total_seconds())
-            hours, remainder = divmod(total_seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            active_time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
-        else:
-            active_time_str = "00:00:00"
-        
-        student_data.append({
-            "student_id": student.student_id,
-            "username": student.username,
-            "status": status,
-            "active_time": active_time_str
-        })
-    
-    return jsonify(student_data)
-
-@app.route('/download_attendance')
-def download_attendance():
-    students = Student.query.filter_by(is_logged_in=True).order_by(Student.student_id).all()
-    file_path = "attendance.csv"
-    
-    with open(file_path, "w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Student ID", "Username", "Login Time", "Last Active Time", "Active Duration (minutes)"])
-        
-        for student in students:
-            login_time = student.login_time.strftime("%Y-%m-%d %H:%M:%S") if student.login_time else "N/A"
-            last_active_time = student.last_active_time.strftime("%Y-%m-%d %H:%M:%S") if student.last_active_time else "N/A"
-            
-            if student.login_time and student.last_active_time:
-                active_duration = (student.last_active_time - student.login_time).total_seconds() / 60  # Convert to minutes
-                active_duration = round(active_duration, 2)
-            else:
-                active_duration = "N/A"
-
-            writer.writerow([student.student_id, student.username, login_time, last_active_time, active_duration])
-    
-    return send_file(file_path, as_attachment=True)
-
-# Face recognition helper functions
 def process_face_image(image_data):
-    """Process base64 image data and extract face encoding"""
+    """Process base64 image data and extract face encoding using YOLOv8"""
     try:
         # Decode base64 image
         image_data = image_data.split(',')[1]
@@ -321,21 +106,18 @@ def process_face_image(image_data):
         np_arr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         
-        # Convert to grayscale for face detection
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Detect faces using YOLOv8
+        results = face_model(img)
         
-        # Detect faces
-        faces = face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-        
-        if len(faces) == 0:
+        if len(results[0].boxes) == 0:
             return None, "No face detected"
         
-        if len(faces) > 1:
+        if len(results[0].boxes) > 1:
             return None, "Multiple faces detected"
         
         # Extract the face region
-        x, y, w, h = faces[0]
-        face_img = gray[y:y+h, x:x+w]
+        x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
+        face_img = img[int(y1):int(y2), int(x1):int(x2)]
         
         # Resize to standard size
         face_img = cv2.resize(face_img, (100, 100))
@@ -344,17 +126,13 @@ def process_face_image(image_data):
         _, buffer = cv2.imencode('.jpg', face_img)
         face_encoded = base64.b64encode(buffer).decode('utf-8')
         
-        # Save face image for training
         return face_encoded, "Success"
     except Exception as e:
         return None, str(e)
 
 def verify_face(student_id, image_data):
-    """Verify if the captured face matches the stored face"""
+    """Verify if the captured face matches the stored face using YOLOv8"""
     try:
-        # Load pre-trained model
-        face_recognizer.read('face_model.yml')
-
         # Get student by student_id
         student = Student.query.filter_by(student_id=student_id).first()
         if not student or not student.face_encoding:
@@ -365,166 +143,473 @@ def verify_face(student_id, image_data):
         image_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Detect face
-        faces = face_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-        if len(faces) != 1:
+        # Detect face using YOLOv8
+        results = face_model(img)
+        if len(results[0].boxes) != 1:
             return False, "No or multiple faces detected"
 
-        # Process face
-        x, y, w, h = faces[0]
-        face_img = gray[y:y+h, x:x+w]
+        # Extract the face region
+        x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
+        face_img = img[int(y1):int(y2), int(x1):int(x2)]
         face_img = cv2.resize(face_img, (100, 100))
 
-        # Predict using pre-trained model
-        label, confidence = face_recognizer.predict(face_img)
+        # Compare with stored face
+        stored_face_bytes = base64.b64decode(student.face_encoding)
+        stored_face_arr = np.frombuffer(stored_face_bytes, np.uint8)
+        stored_face_img = cv2.imdecode(stored_face_arr, cv2.IMREAD_COLOR)
 
-        # Verify prediction matches student ID
-        if label == student.id and confidence < 70:
+        # Simple comparison using Mean Squared Error (MSE)
+        mse = np.mean((face_img - stored_face_img) ** 2)
+        if mse < 1000:  # Adjust threshold as needed
             return True, "Face verified"
         else:
-            return False, f"Verification failed (confidence: {confidence})"
+            return False, f"Verification failed (MSE: {mse})"
 
     except Exception as e:
         return False, str(e)
-# Modified student registration to capture face
+
+# Main index route
+@app.route('/')
+def index():
+    bssid = get_wifi_bssid()
+    return render_template('index.html', bssid=bssid)
+
+# Admin registration
+@app.route('/register_admin', methods=['GET', 'POST'])
+def register_admin():
+    if request.method == 'POST':
+        idname = request.form.get('idname')
+        username = request.form.get('username')
+        password = request.form.get('password')
+        secret_key = request.form.get('secret_key')
+        
+        # Check if the secret key is correct (hardcoded for simplicity)
+        #if secret_key != 69420:  # You'd want a more secure approach in production
+            #flash("Invalid secret key")
+            #return redirect(url_for('register_admin'))
+            
+        existing_admin = Admin.query.filter_by(username=username).first()
+        if existing_admin:
+            flash("Username already exists")
+            return redirect(url_for('register_admin'))
+            
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        new_admin = Admin(idname=idname, username=username, password=hashed_password)
+        
+        db.session.add(new_admin)
+        db.session.commit()
+        
+        flash("Registration successful")
+        return redirect(url_for('login_admin'))
+        
+    return render_template('register_admin.html')
+
+# Admin login
+@app.route('/login_admin', methods=['GET', 'POST'])
+def login_admin():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        admin = Admin.query.filter_by(username=username).first()
+        
+        if admin and bcrypt.check_password_hash(admin.password, password):
+            session['admin_id'] = admin.id
+            session['admin_username'] = admin.username
+            
+            # Save current BSSID
+            current_bssid = get_wifi_bssid()
+            admin.current_bssid = current_bssid
+            db.session.commit()
+            
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash("Invalid username or password")
+            
+    return render_template('login_admin.html')
+
+# Admin dashboard
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if 'admin_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_admin'))
+        
+    # Get students who are currently logged in
+    students_present = []
+    active_students = Student.query.filter_by(is_logged_in=True).all()
+    
+    for student in active_students:
+        # Calculate active time
+        if student.login_time:
+            active_duration = datetime.utcnow() - student.login_time
+            hours, remainder = divmod(active_duration.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
+        else:
+            active_time = "00:00:00"
+        
+        # Check if student is active within last 2 minutes
+        status = "Active"
+        if student.last_active_time and (datetime.utcnow() - student.last_active_time).seconds > 120:
+            status = "Inactive"
+            
+        students_present.append({
+            'student_id': student.student_id,
+            'username': student.username,
+            'status': status,
+            'active_time': active_time,
+            'room': student.current_room
+        })
+        
+    # Get all rooms created by this admin
+    admin_id = session.get('admin_id')
+    rooms = Room.query.filter_by(admin_id=admin_id).all()
+    
+    return render_template('admin_dashboard.html', students_present=students_present, rooms=rooms)
+
+# Create a new room
+# ... existing imports and config ...
+
+@app.route('/create_room', methods=['POST'])
+def create_room():
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+        
+    room_code = request.form.get('room_code')
+    
+    # Check if room code already exists
+    existing_room = Room.query.filter_by(room_code=room_code).first()
+    if existing_room:
+        return jsonify({'success': False, 'message': 'Room code already exists'})
+    
+    # Get admin's current BSSID
+    admin_id = session.get('admin_id')
+    admin = Admin.query.get(admin_id)
+    
+    # Create new room
+    new_room = Room(
+        room_code=room_code,
+        admin_id=admin_id,
+        bssid=admin.current_bssid,
+        active=True
+    )
+    
+    db.session.add(new_room)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': f'Room {room_code} created successfully'})
+
+@app.route('/close_room/<room_code>', methods=['POST'])
+def close_room(room_code):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found'})
+    
+    # Set room as inactive
+    room.active = False
+    
+    # Log out all students in the room
+    students_in_room = Student.query.filter_by(current_room=room_code, is_logged_in=True).all()
+    for student in students_in_room:
+        # Create attendance record
+        if student.login_time:
+            active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+            attendance = AttendanceRecord(
+                student_id=student.student_id,
+                room_code=room_code,
+                login_time=student.login_time,
+                logout_time=datetime.utcnow(),
+                active_duration=active_duration
+            )
+            db.session.add(attendance)
+        
+        # Reset student login status
+        student.is_logged_in = False
+        student.current_room = None
+        student.login_time = None
+        student.last_active_time = None
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
+
+# ... rest of existing routes ...
+# Student registration
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
-        student_id = request.form['student_id']
-        username = request.form['username']
-        password = request.form['password']
-        face_image = request.form['face_image']
+        student_id = request.form.get('student_id')
+        username = request.form.get('username')
+        password = request.form.get('password')
+        face_image = request.form.get('face_image')
         
-        # Check if student already exists
-        existing_student = Student.query.filter(
-            (Student.student_id == student_id) | (Student.username == username)
-        ).first()
-
+        existing_student = Student.query.filter_by(username=username).first()
         if existing_student:
-            flash("Student ID or username already exists!", "danger")
+            flash("Username already exists")
             return redirect(url_for('register_student'))
-        
-        # Process face image
+            
+        # Process and save face image
         face_encoding, message = process_face_image(face_image)
         if not face_encoding:
-            flash(f"Face registration failed: {message}", "danger")
+            flash(f"Face registration failed: {message}")
             return redirect(url_for('register_student'))
-
-        # Hash password
+        
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-
-        # Save student with face data
         new_student = Student(
             student_id=student_id,
             username=username,
             password=hashed_password,
             face_encoding=face_encoding
         )
+        
         db.session.add(new_student)
         db.session.commit()
-        retrain_face_recognizer()
-
-        flash("Student registered successfully!", "success")
+        
+        flash("Registration successful")
         return redirect(url_for('login_student'))
+        
+    return render_template('register_student.html')
 
-    return render_template('register-student.html')
-
-# Modified student login to verify face
+# Student login
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username')
+        password = request.form.get('password')
         face_image = request.form.get('face_image')
-
+        room_code = request.form.get('room_code')  # Added room code field
+        
         student = Student.query.filter_by(username=username).first()
+        
         if not student:
-            flash("Invalid username or password!", "danger")
+            flash("Invalid username or password")
             return redirect(url_for('login_student'))
             
         if not bcrypt.check_password_hash(student.password, password):
-            flash("Invalid username or password!", "danger")
+            flash("Invalid username or password")
             return redirect(url_for('login_student'))
-            
+        
         # Verify face
-        if not face_image:
-            flash("Face verification required!", "danger")
+        face_verified, message = verify_face(student.student_id, face_image)
+        if not face_verified:
+            flash(f"Face verification failed: {message}")
+            return redirect(url_for('login_student'))
+        
+        # Verify room code exists and is active
+        room = Room.query.filter_by(room_code=room_code, active=True).first()
+        if not room:
+            flash("Invalid or inactive room code")
+            return redirect(url_for('login_student'))
+        
+        # Verify BSSID matches the room's BSSID
+        current_bssid = get_wifi_bssid()
+        if current_bssid != room.bssid:
+            flash("You must be connected to the same network as the admin who created this room")
             return redirect(url_for('login_student'))
             
-        is_verified, message = verify_face(student.student_id, face_image)
-        if not is_verified:
-            flash(f"Face verification failed: {message}", "danger")
-            return redirect(url_for('login_student'))
-
-        # Login successful
-        session['student_id'] = student.student_id
+        # Set login info
         student.is_logged_in = True
-
-        # Set login_time only if it's not already set (first login of session)
-        if not student.login_time:
-            student.login_time = datetime.now()
-
-        # Always update last_active_time on login
-        student.last_active_time = datetime.now()
-
+        student.login_time = datetime.utcnow()
+        student.last_active_time = datetime.utcnow()
+        student.current_room = room_code
+        
         db.session.commit()
-        flash("Login successful!", "success")
+        
+        session['student_id'] = student.id
+        session['student_username'] = student.username
+        session['current_room'] = room_code
+        
         return redirect(url_for('student_dashboard'))
+        
+    # Get list of active rooms for dropdown
+    active_rooms = Room.query.filter_by(active=True).all()
+    return render_template('login_student.html', active_rooms=active_rooms)
 
-    return render_template('login-student.html')
-
-# Student Dashboard (Protected Route)
+# Student dashboard
 @app.route('/student_dashboard')
 def student_dashboard():
-    if 'student_id' in session:
-        student = Student.query.filter_by(student_id=session['student_id']).first()
-        return render_template('student-dashboard.html', student=student)
+    if 'student_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_student'))
+        
+    student_id = session.get('student_id')
+    student = Student.query.get(student_id)
+    
+    return render_template('student_dashboard.html', student=student)
 
-    flash("Please log in first!", "warning")
-    return redirect(url_for('login_student'))
-
-@app.route('/logout')
+# Logout route
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
     if 'student_id' in session:
-        student = Student.query.filter_by(student_id=session['student_id']).first()
+        student_id = session.get('student_id')
+        student = Student.query.get(student_id)
+        
         if student and student.is_logged_in:
             # Create attendance record
-            if student.login_time and student.last_active_time:
-                duration = (student.last_active_time - student.login_time).total_seconds() / 60
-                record = AttendanceRecord(
+            if student.login_time:
+                active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+                attendance = AttendanceRecord(
                     student_id=student.student_id,
+                    room_code=student.current_room,
                     login_time=student.login_time,
-                    logout_time=student.last_active_time,
-                    active_duration=duration
+                    logout_time=datetime.utcnow(),
+                    active_duration=active_duration
                 )
-                db.session.add(record)
+                db.session.add(attendance)
             
-            # Clear session data
+            # Reset student login status
             student.is_logged_in = False
+            student.current_room = None
             student.login_time = None
             student.last_active_time = None
             db.session.commit()
+            
+        # Clear session
+        session.pop('student_id', None)
+        session.pop('student_username', None)
+        session.pop('current_room', None)
         
-        session.clear()
-        flash("Logged out successfully!", "success")
-    return redirect(url_for('login_student'))
+    elif 'admin_id' in session:
+        session.pop('admin_id', None)
+        session.pop('admin_username', None)
+        
+    return redirect(url_for('index'))
 
+# Admin start session
+@app.route('/start_session', methods=['POST'])
+def start_session():
+    if 'admin_id' not in session:
+        return jsonify({'message': 'Admin not logged in'}), 401
+    
+    admin_id = session['admin_id']
+    admin = Admin.query.get(admin_id)
+    admin.session_active = True
+    db.session.commit()
+    
+    return jsonify({'message': 'Session started successfully'})
+
+# Admin end session
+@app.route('/end_session', methods=['POST'])
+def end_session():
+    if 'admin_id' not in session:
+        return jsonify({'message': 'Admin not logged in'}), 401
+    
+    admin_id = session['admin_id']
+    admin = Admin.query.get(admin_id)
+    
+    # End all active rooms for this admin
+    active_rooms = Room.query.filter_by(admin_id=admin_id, active=True).all()
+    for room in active_rooms:
+        room.active = False
+        
+        # Log out all students in the room
+        students_in_room = Student.query.filter_by(current_room=room.room_code, is_logged_in=True).all()
+        for student in students_in_room:
+            # Create attendance record
+            if student.login_time:
+                active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+                attendance = AttendanceRecord(
+                    student_id=student.student_id,
+                    room_code=room.room_code,
+                    login_time=student.login_time,
+                    logout_time=datetime.utcnow(),
+                    active_duration=active_duration
+                )
+                db.session.add(attendance)
+            
+            # Reset student login status
+            student.is_logged_in = False
+            student.current_room = None
+            student.login_time = None
+            student.last_active_time = None
+    
+    admin.session_active = False
+    db.session.commit()
+    
+    return jsonify({'message': 'Session ended successfully'})
+
+# Update student activity
 @app.route('/update_activity', methods=['POST'])
 def update_activity():
-    if 'student_id' not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
+    if 'student_id' in session:
+        student_id = session.get('student_id')
+        student = Student.query.get(student_id)
+        
+        if student:
+            student.last_active_time = datetime.utcnow()
+            db.session.commit()
+            
+    return jsonify({'success': True})
 
-    student = Student.query.filter_by(student_id=session['student_id']).first()
-    if student and student.is_logged_in:
-        if not student.login_time:
-            student.login_time = datetime.now()
-        student.last_active_time = datetime.now()
-        db.session.commit()
-        return jsonify({"success": True})
+# Get active students for admin dashboard
+@app.route('/active_students')
+def active_students():
+    if 'admin_id' not in session:
+        return jsonify([])
     
-    return jsonify({"success": False, "error": "Student not logged in"}), 400
+    students_list = []
+    active_students = Student.query.filter_by(is_logged_in=True).all()
+    
+    for student in active_students:
+        # Calculate active time
+        if student.login_time:
+            active_duration = datetime.utcnow() - student.login_time
+            hours, remainder = divmod(active_duration.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
+        else:
+            active_time = "00:00:00"
+        
+        # Check if student is active within last 2 minutes
+        status = "Active"
+        if student.last_active_time and (datetime.utcnow() - student.last_active_time).seconds > 120:
+            status = "Inactive"
+            
+        students_list.append({
+            'student_id': student.student_id,
+            'username': student.username,
+            'status': status,
+            'active_time': active_time,
+            'room': student.current_room
+        })
+    
+    return jsonify(students_list)
+
+# Download attendance records
+@app.route('/download_attendance')
+def download_attendance():
+    if 'admin_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_admin'))
+    
+    # Create a temporary CSV file
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+    
+    with open(temp_file.name, 'w', newline='') as csvfile:
+        fieldnames = ['student_id', 'room_code', 'login_time', 'logout_time', 'active_duration']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        records = AttendanceRecord.query.all()
+        
+        for record in records:
+            writer.writerow({
+                'student_id': record.student_id,
+                'room_code': record.room_code,
+                'login_time': record.login_time,
+                'logout_time': record.logout_time,
+                'active_duration': f"{record.active_duration:.2f} minutes"
+            })
+    
+    return send_file(temp_file.name, as_attachment=True, download_name='attendance.csv')
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
