@@ -1,7 +1,4 @@
-Flask==2.3.2
-Flask-Bcrypt==1.0.1
-Flask-SQLAlchemy==3.0.3
-numpy==1.24.3
-opencv-python-headless==4.8.0.76
-ultralytics==8.0.142
-Pillow==9.5.0
+Flask==2.0.2
+numpy==1.21.2
+opencv-python-headless==4.5.3.56
+ultralytics==0.0.45
