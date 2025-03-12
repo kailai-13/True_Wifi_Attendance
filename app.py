@@ -10,12 +10,13 @@ import cv2
 import base64
 import os
 from ultralytics import YOLO
+from flask_session import Session
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
 
 # Load YOLOv8 face detection model
-face_model = YOLO('yolov5n.pt')  # Ensure you have the YOLOv8 face model
+face_model = YOLO('yolov8n.pt')  # Ensure you have the YOLOv8 face model
 
 app = Flask(__name__)
 
@@ -30,6 +31,8 @@ app.config['SQLALCHEMY_BINDS'] = {
 }
 
 app.config['SECRET_KEY'] = 'supersecretkey'
+app.config['SESSION_TYPE'] = 'filesystem'
+Session(app)
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
@@ -49,7 +52,7 @@ class Room(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     room_code = db.Column(db.String(50), nullable=False, unique=True)
     admin_id = db.Column(db.Integer, nullable=False)  # ID of admin who created the room
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
     active = db.Column(db.Boolean, default=True)
     bssid = db.Column(db.String(100))  # Store the BSSID when room was created
 
@@ -243,7 +246,7 @@ def admin_dashboard():
     for student in active_students:
         # Calculate active time
         if student.login_time:
-            active_duration = datetime.utcnow() - student.login_time
+            active_duration = datetime.now() - student.login_time
             hours, remainder = divmod(active_duration.seconds, 3600)
             minutes, seconds = divmod(remainder, 60)
             active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
@@ -252,7 +255,7 @@ def admin_dashboard():
         
         # Check if student is active within last 2 minutes
         status = "Active"
-        if student.last_active_time and (datetime.utcnow() - student.last_active_time).seconds > 120:
+        if student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
             status = "Inactive"
             
         students_present.append({
@@ -320,7 +323,7 @@ def close_room(room_code):
     for student in students_in_room:
         # Create attendance record
         if student.login_time:
-            active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+            active_duration = (datetime.now() - student.login_time).total_seconds() / 60
             attendance = AttendanceRecord(
                 student_id=student.student_id,
                 room_code=room_code,
@@ -416,8 +419,8 @@ def login_student():
             
         # Set login info
         student.is_logged_in = True
-        student.login_time = datetime.utcnow()
-        student.last_active_time = datetime.utcnow()
+        student.login_time = datetime.now()
+        student.last_active_time = datetime.now()
         student.current_room = room_code
         
         db.session.commit()
@@ -454,12 +457,12 @@ def logout():
         if student and student.is_logged_in:
             # Create attendance record
             if student.login_time:
-                active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
                 attendance = AttendanceRecord(
                     student_id=student.student_id,
                     room_code=student.current_room,
                     login_time=student.login_time,
-                    logout_time=datetime.utcnow(),
+                    logout_time=datetime.now(),
                     active_duration=active_duration
                 )
                 db.session.add(attendance)
@@ -514,12 +517,12 @@ def end_session():
         for student in students_in_room:
             # Create attendance record
             if student.login_time:
-                active_duration = (datetime.utcnow() - student.login_time).total_seconds() / 60
+                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
                 attendance = AttendanceRecord(
                     student_id=student.student_id,
                     room_code=room.room_code,
                     login_time=student.login_time,
-                    logout_time=datetime.utcnow(),
+                    logout_time=datetime.now(),
                     active_duration=active_duration
                 )
                 db.session.add(attendance)
@@ -543,7 +546,7 @@ def update_activity():
         student = Student.query.get(student_id)
         
         if student:
-            student.last_active_time = datetime.utcnow()
+            student.last_active_time = datetime.now()
             db.session.commit()
             
     return jsonify({'success': True})
@@ -560,7 +563,7 @@ def active_students():
     for student in active_students:
         # Calculate active time
         if student.login_time:
-            active_duration = datetime.utcnow() - student.login_time
+            active_duration = datetime.now() - student.login_time
             hours, remainder = divmod(active_duration.seconds, 3600)
             minutes, seconds = divmod(remainder, 60)
             active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
@@ -569,7 +572,7 @@ def active_students():
         
         # Check if student is active within last 2 minutes
         status = "Active"
-        if student.last_active_time and (datetime.utcnow() - student.last_active_time).seconds > 120:
+        if student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
             status = "Inactive"
             
         students_list.append({
