@@ -9,13 +9,8 @@ import numpy as np
 import cv2
 import base64
 import os
-from ultralytics import YOLO
 
 # Create directory for storing face images if it doesn't exist
-os.makedirs('face_data', exist_ok=True)
-
-# Load YOLOv8 face detection model
-face_model = YOLO('yolov8n-face.pt')  # Ensure you have the YOLOv8 face model
 
 app = Flask(__name__)
 
