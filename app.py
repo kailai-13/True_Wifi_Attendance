@@ -15,7 +15,7 @@ from ultralytics import YOLO
 os.makedirs('face_data', exist_ok=True)
 
 # Load YOLOv8 face detection model
-face_model = YOLO('yolov8n-face.pt')  # Ensure you have the YOLOv8 face model
+face_model = YOLO('yolov5n.pt')  # Ensure you have the YOLOv8 face model
 
 app = Flask(__name__)
 
