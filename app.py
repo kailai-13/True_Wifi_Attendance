@@ -617,5 +617,45 @@ def download_attendance():
     
     return send_file(temp_file.name, as_attachment=True, download_name='attendance.csv')
 
+@app.route('/download_student_attendance')
+def download_student_attendance():
+    if 'student_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_student'))
+    
+    # Get student's actual ID string from database
+    student_db_id = session.get('student_id')
+    student = Student.query.get(student_db_id)
+    
+    if not student:
+        flash("Student not found")
+        return redirect(url_for('login_student'))
+
+    # Create temporary CSV file
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+    
+    with open(temp_file.name, 'w', newline='') as csvfile:
+        fieldnames = ['room_code', 'login_time', 'logout_time', 'active_duration']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        # Filter records by student's actual ID string
+        records = AttendanceRecord.query.filter_by(student_id=student.student_id).all()
+        
+        for record in records:
+            writer.writerow({
+                'room_code': record.room_code,
+                'login_time': record.login_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'logout_time': record.logout_time.strftime('%Y-%m-%d %H:%M:%S') if record.logout_time else 'N/A',
+                'active_duration': f"{record.active_duration:.2f} minutes"
+            })
+    
+    return send_file(
+        temp_file.name,
+        as_attachment=True,
+        download_name=f'attendance_{student.student_id}.csv'
+    )
+
 if __name__ == '__main__':
     app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"))
