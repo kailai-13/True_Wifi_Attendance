@@ -6,40 +6,6 @@
     <title>Admin Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
-        function startSession() {
-            fetch("/start_session", { method: "POST" })
-                .then(response => response.json())
-                .then(data => alert(data.message))
-                .then(() => location.reload());
-        }
-
-        function endSession() {
-            fetch("/end_session", { method: "POST" })
-                .then(response => response.json())
-                .then(data => alert(data.message))
-                .then(() => location.reload());
-        }
-
-        function updateStudentList() {
-            fetch("/active_students")
-                .then(response => response.json())
-                .then(data => {
-                    let tableBody = document.getElementById("student-list");
-                    tableBody.innerHTML = "";
-                    data.forEach(student => {
-                        let row = `<tr>
-                            <td>${student.student_id}</td>
-                            <td>${student.username}</td>
-                            <td>${student.status}</td>
-                            <td>${student.active_time}</td>
-                            <td>${student.room}</td>
-                        </tr>`;
-                        tableBody.innerHTML += row;
-                    });
-                });
-        }
-
-        setInterval(updateStudentList, 2000);  // Refresh every 2 seconds
         function createRoom() {
             const roomCode = document.getElementById('room-code').value;
             if (!roomCode) {
@@ -68,14 +34,32 @@
         function closeRoom(roomCode) {
             if (confirm(`Are you sure you want to close ${roomCode}?`)) {
                 fetch(`/close_room/${roomCode}`, { method: "POST" })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message);
-                    location.reload();
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        location.reload(); // Refresh the page to update the room list
+                    })
+                    .catch(error => {
+                        console.error('Error closing room:', error);
+                        alert('Failed to close room. Please try again.');
+                    });
             }
         }
 
+        function logout() {
+            fetch("/logout", { method: "POST" })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    if (data.redirect) {
+                        window.location.href = data.redirect; // Redirect to the index page
+                    }
+                })
+                .catch(error => {
+                    console.error('Error logging out:', error);
+                    alert('Failed to logout. Please try again.');
+                });
+        }
     </script>
 </head>
 <body>
@@ -97,8 +81,7 @@
             {% endfor %}
         </ul>
     </div>
-    <button onclick="startSession()">Start Session</button>
-    <button onclick="endSession()">End Session</button>
+   
     <a href="/download_attendance"><button>Download Attendance</button></a>
 
     <h2>Currently Connected Students</h2>
@@ -122,5 +105,6 @@
             {% endfor %}
         </tbody>
     </table>
+    <button onclick="logout()">LOGOUT</button>
 </body>
 </html>

@@ -308,20 +308,16 @@ def create_room():
 def close_room(room_code):
     if 'admin_id' not in session:
         return jsonify({'success': False, 'message': 'Admin not logged in'})
-    
+
     admin_id = session.get('admin_id')
     room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
-    
+
     if not room:
         return jsonify({'success': False, 'message': 'Room not found'})
-    
-    # Set room as inactive
-    room.active = False
-    
+
     # Log out all students in the room
     students_in_room = Student.query.filter_by(current_room=room_code, is_logged_in=True).all()
     for student in students_in_room:
-        # Create attendance record
         if student.login_time:
             active_duration = (datetime.now() - student.login_time).total_seconds() / 60
             attendance = AttendanceRecord(
@@ -332,15 +328,17 @@ def close_room(room_code):
                 active_duration=active_duration
             )
             db.session.add(attendance)
-        
+
         # Reset student login status
         student.is_logged_in = False
         student.current_room = None
         student.login_time = None
         student.last_active_time = None
-    
+
+    # Delete the room
+    db.session.delete(room)
     db.session.commit()
-    
+
     return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
 
 # ... rest of existing routes ...
@@ -448,12 +446,12 @@ def student_dashboard():
     return render_template('student_dashboard.html', student=student)
 
 # Logout route
-@app.route('/logout', methods=['GET', 'POST'])
+@app.route('/logout', methods=['POST'])
 def logout():
     if 'student_id' in session:
         student_id = session.get('student_id')
         student = Student.query.get(student_id)
-        
+
         if student and student.is_logged_in:
             # Create attendance record
             if student.login_time:
@@ -466,77 +464,82 @@ def logout():
                     active_duration=active_duration
                 )
                 db.session.add(attendance)
-            
+
             # Reset student login status
             student.is_logged_in = False
             student.current_room = None
             student.login_time = None
             student.last_active_time = None
             db.session.commit()
-            
-        # Clear session
+
+        # Clear student session
         session.pop('student_id', None)
         session.pop('student_username', None)
         session.pop('current_room', None)
-        
+
     elif 'admin_id' in session:
+        admin_id = session.get('admin_id')
+
+        # Close all active rooms created by the admin
+        rooms = Room.query.filter_by(admin_id=admin_id).all()
+        for room in rooms:
+            db.session.delete(room)
+        db.session.commit()
+
+        # Clear admin session
         session.pop('admin_id', None)
         session.pop('admin_username', None)
-        
-    return redirect(url_for('index'))
 
-# Admin start session
-@app.route('/start_session', methods=['POST'])
-def start_session():
-    if 'admin_id' not in session:
-        return jsonify({'message': 'Admin not logged in'}), 401
-    
-    admin_id = session['admin_id']
-    admin = Admin.query.get(admin_id)
-    admin.session_active = True
-    db.session.commit()
-    
-    return jsonify({'message': 'Session started successfully'})
+    return jsonify({'success': True, 'message': 'Logged out successfully', 'redirect': url_for('index')})
 
-# Admin end session
-@app.route('/end_session', methods=['POST'])
-def end_session():
-    if 'admin_id' not in session:
-        return jsonify({'message': 'Admin not logged in'}), 401
-    
-    admin_id = session['admin_id']
-    admin = Admin.query.get(admin_id)
-    
-    # End all active rooms for this admin
-    active_rooms = Room.query.filter_by(admin_id=admin_id, active=True).all()
-    for room in active_rooms:
-        room.active = False
-        
-        # Log out all students in the room
-        students_in_room = Student.query.filter_by(current_room=room.room_code, is_logged_in=True).all()
-        for student in students_in_room:
+@app.route('/logout_s', methods=['POST'])
+def logout_s():
+    if 'student_id' in session:
+        student_id = session.get('student_id')
+        student = Student.query.get(student_id)
+
+        if student and student.is_logged_in:
             # Create attendance record
             if student.login_time:
                 active_duration = (datetime.now() - student.login_time).total_seconds() / 60
                 attendance = AttendanceRecord(
                     student_id=student.student_id,
-                    room_code=room.room_code,
+                    room_code=student.current_room,
                     login_time=student.login_time,
                     logout_time=datetime.now(),
                     active_duration=active_duration
                 )
                 db.session.add(attendance)
-            
+
             # Reset student login status
             student.is_logged_in = False
             student.current_room = None
             student.login_time = None
             student.last_active_time = None
-    
-    admin.session_active = False
-    db.session.commit()
-    
-    return jsonify({'message': 'Session ended successfully'})
+            db.session.commit()
+
+        # Clear student session
+        session.pop('student_id', None)
+        session.pop('student_username', None)
+        session.pop('current_room', None)
+
+    elif 'admin_id' in session:
+        admin_id = session.get('admin_id')
+
+        # Close all active rooms created by the admin
+        rooms = Room.query.filter_by(admin_id=admin_id).all()
+        for room in rooms:
+            db.session.delete(room)
+        db.session.commit()
+
+        # Clear admin session
+        session.pop('admin_id', None)
+        session.pop('admin_username', None)
+
+    return jsonify({'success': True, 'message': 'Logged out successfully', 'redirect': url_for('index')})
+
+
+
 
 # Update student activity
 @app.route('/update_activity', methods=['POST'])

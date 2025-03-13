@@ -6,11 +6,20 @@
     <title>Student Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
-        function logoutOnDisconnect() {
-            fetch("/logout", { method: "POST" });
+        function logout() {
+            fetch("/logout", { 
+                method: "POST",  // Explicitly use POST
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(() => {
+                window.location.href = "/";  // Force redirect after POST
+            })
+            .catch(error => {
+                console.error('Logout failed:', error);
+            });
         }
-        window.addEventListener("beforeunload", logoutOnDisconnect);
-
         function sendHeartbeat() {
             fetch('/update_activity', { method: 'POST' })
                 .then(response => response.json())
@@ -28,7 +37,7 @@
         <p>Current Room: <strong>{{ student.current_room }}</strong></p>
 
         <div class="button-group">
-            <a href="{{ url_for('logout') }}" class="btn logout-btn">Logout</a>
+            <a onclick='logout()' class="btn logout-btn">Logout</a>
         </div>
     </div>
 </body>
