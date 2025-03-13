@@ -178,4 +178,3 @@ MIT License - See [LICENSE](LICENSE) for details
 For assistance, contact: [kailainathan2006@gmail.com](mailto:kailainathan2006@gmail.com)
 ```
 
-This README provides complete setup instructions, usage guidelines, and technical documentation. Users should follow security best practices when deploying in production environments.
