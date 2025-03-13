@@ -176,5 +176,3 @@ MIT License - See [LICENSE](LICENSE) for details
 ## Support
 
 For assistance, contact: [kailainathan2006@gmail.com](mailto:kailainathan2006@gmail.com)
-```
-
