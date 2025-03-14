@@ -1,0 +1,30 @@
+<header>
+    <div class="logo">
+        <img src="logo.png" alt="Site Logo">
+    </div>
+    
+    <h1 id="page-title">Page Title</h1>
+
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+
+    <nav id="sidebar">
+        <button class="close-btn" onclick="toggleSidebar()">×</button>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="contact.html">Contact</a></li>
+        </ul>
+    </nav>
+</header>
+<script>
+    function toggleSidebar() {
+        let sidebar = document.getElementById("sidebar");
+        sidebar.style.left = sidebar.style.left === "0px" ? "-250px" : "0px";
+    }
+    
+    // Dynamically set the page title
+    document.addEventListener("DOMContentLoaded", function() {
+        let pageTitle = document.title; // Gets the page's <title>
+        document.getElementById("page-title").innerText = pageTitle;
+    });
+</script>    

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WiFi BSSID Detector</title>
+    <title>True Wifi Attendance</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -24,10 +24,23 @@
                 localStorage.setItem('theme', newTheme); // Save theme to localStorage
             });
         });
+            
+        // Load the navbar dynamically
+        fetch("C:\Users\Kaila\OneDrive\Documents\FINAL HOPE\templates\navbar.html")
+            .then(response => response.text())
+            .then(data => document.getElementById("navbar-container").innerHTML = data)
+            .then(() => {
+                // Re-run JavaScript functions after loading
+                document.getElementById("page-title").innerText = document.title;
+            });
+    
     </script>
 </head>
 <body>
-    
+    <div id="navbar-container"></div>
+
+
+        
     <div class="container">
       
 
