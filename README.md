@@ -1,4 +1,4 @@
-```markdown
+
 # Attendance System with Face Recognition
 
 A Flask-based web application for tracking student attendance using face recognition and WiFi BSSID verification. Features separate dashboards for administrators and students with real-time tracking capabilities.
@@ -27,7 +27,7 @@ A Flask-based web application for tracking student attendance using face recogni
 - Required Packages:
   ```bash
   pip install flask flask-sqlalchemy flask-bcrypt opencv-python numpy ultralytics flask-session
-  ```
+
 
 ## Installation
 
