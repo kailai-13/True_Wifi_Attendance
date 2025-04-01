@@ -212,6 +212,7 @@ def register_admin():
 @app.route('/login_admin', methods=['GET', 'POST'])
 def login_admin():
     if request.method == 'POST':
+     
         username = request.form.get('username')
         password = request.form.get('password')
         
@@ -660,4 +661,4 @@ def download_student_attendance():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"))
+    app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"),debug=True)
