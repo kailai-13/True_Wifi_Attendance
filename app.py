@@ -63,7 +63,7 @@ class Student(db.Model):
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-    face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
+   # face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
     current_room = db.Column(db.String(50))  # Store current room code
     
     is_logged_in = db.Column(db.Boolean, default=False)
@@ -349,7 +349,7 @@ def register_student():
         student_id = request.form.get('student_id')
         username = request.form.get('username')
         password = request.form.get('password')
-        face_image = request.form.get('face_image')
+       # face_image = request.form.get('face_image')
         
         existing_student = Student.query.filter_by(username=username).first()
         if existing_student:
@@ -357,17 +357,17 @@ def register_student():
             return redirect(url_for('register_student'))
             
         # Process and save face image
-        face_encoding, message = process_face_image(face_image)
-        if not face_encoding:
-            flash(f"Face registration failed: {message}")
-            return redirect(url_for('register_student'))
+       # face_encoding, message = process_face_image(face_image)
+            ''' if not face_encoding:
+                        flash(f"Face registration failed: {message}")
+                        return redirect(url_for('register_student'))'''
         
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         new_student = Student(
             student_id=student_id,
             username=username,
             password=hashed_password,
-            face_encoding=face_encoding
+           # face_encoding=face_encoding
         )
         
         db.session.add(new_student)
@@ -384,7 +384,7 @@ def login_student():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        face_image = request.form.get('face_image')
+       # face_image = request.form.get('face_image')
         room_code = request.form.get('room_code')  # Added room code field
         
         student = Student.query.filter_by(username=username).first()
@@ -398,10 +398,10 @@ def login_student():
             return redirect(url_for('login_student'))
         
         # Verify face
-        face_verified, message = verify_face(student.student_id, face_image)
-        if not face_verified:
-            flash(f"Face verification failed: {message}")
-            return redirect(url_for('login_student'))
+        """        face_verified, message = verify_face(student.student_id, face_image)
+                if not face_verified:
+                    flash(f"Face verification failed: {message}")
+                    return redirect(url_for('login_student'))"""
         
         # Verify room code exists and is active
         room = Room.query.filter_by(room_code=room_code, active=True).first()
@@ -657,5 +657,7 @@ def download_student_attendance():
         download_name=f'attendance_{student.student_id}.csv'
     )
 
+
+
 if __name__ == '__main__':
-    app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"), debug=True)
+    app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"))

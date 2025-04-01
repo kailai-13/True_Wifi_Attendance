@@ -619,7 +619,7 @@ input[type="text"] {
 
 /* Add to existing CSS */
 .attendance-download {
-  margin: 20px 0;
+  margin: 20px 0;                   
 }
 
 .attendance-download button {
