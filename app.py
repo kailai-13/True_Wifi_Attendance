@@ -11,6 +11,8 @@ import base64
 import os
 from ultralytics import YOLO
 from flask_session import Session
+import threading
+import time
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
@@ -63,12 +65,14 @@ class Student(db.Model):
     student_id = db.Column(db.String(50), nullable=False, unique=True)
     username = db.Column(db.String(50), nullable=False, unique=True)
     password = db.Column(db.String(100), nullable=False)
-   # face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
+    # face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
     current_room = db.Column(db.String(50))  # Store current room code
+    current_bssid = db.Column(db.String(100))  # Store student's current BSSID
     
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
     last_active_time = db.Column(db.DateTime)
+    is_active = db.Column(db.Boolean, default=True)  # Track if student is connected to correct WiFi
 
 class AttendanceRecord(db.Model):
     __bind_key__ = 'student_db'
@@ -99,6 +103,38 @@ def get_wifi_bssid():
         return match.group(1) if match else "BSSID not found"
     except Exception as e:
         return str(e)
+
+# Background thread to check WiFi connection of all logged-in students
+def check_wifi_connections():
+    with app.app_context():
+        while True:
+            try:
+                # Get all logged-in students
+                active_students = Student.query.filter_by(is_logged_in=True).all()
+                
+                for student in active_students:
+                    if not student.current_room:
+                        continue
+                        
+                    # Get the room's BSSID
+                    room = Room.query.filter_by(room_code=student.current_room).first()
+                    if not room:
+                        continue
+                    
+                    # Request the current BSSID from student's client
+                    # For now, we'll simulate this with a route the client calls regularly
+                    # The real implementation would use the BSSID stored in student.current_bssid
+                    
+                    # If the student's BSSID doesn't match the room's BSSID, mark as inactive
+                    if student.current_bssid != room.bssid:
+                        student.is_active = False
+                        db.session.commit()
+                
+                # Sleep for a few seconds before checking again
+                time.sleep(5)
+            except Exception as e:
+                print(f"Error in WiFi check thread: {e}")
+                time.sleep(10)  # Wait longer if there's an error
 
 def process_face_image(image_data):
     """Process base64 image data and extract face encoding using YOLOv8"""
@@ -171,6 +207,10 @@ def verify_face(student_id, image_data):
 
     except Exception as e:
         return False, str(e)
+
+# Start the WiFi check thread when the app starts
+wifi_thread = threading.Thread(target=check_wifi_connections, daemon=True)
+wifi_thread.start()
 
 # Main index route
 @app.route('/')
@@ -254,10 +294,12 @@ def admin_dashboard():
         else:
             active_time = "00:00:00"
         
-        # Check if student is active within last 2 minutes
-        status = "Active"
-        if student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
-            status = "Inactive"
+        # Check connection status
+        status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
+        
+        # Also check if student is active within last 2 minutes as a backup
+        if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
+            status = "Inactive (No Activity)"
             
         students_present.append({
             'student_id': student.student_id,
@@ -274,8 +316,6 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', students_present=students_present, rooms=rooms)
 
 # Create a new room
-# ... existing imports and config ...
-
 @app.route('/create_room', methods=['POST'])
 def create_room():
     if 'admin_id' not in session:
@@ -335,6 +375,8 @@ def close_room(room_code):
         student.current_room = None
         student.login_time = None
         student.last_active_time = None
+        student.current_bssid = None
+        student.is_active = True  # Reset active status
 
     # Delete the room
     db.session.delete(room)
@@ -342,7 +384,6 @@ def close_room(room_code):
 
     return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
 
-# ... rest of existing routes ...
 # Student registration
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
@@ -369,6 +410,7 @@ def register_student():
             username=username,
             password=hashed_password,
            # face_encoding=face_encoding
+           is_active=True
         )
         
         db.session.add(new_student)
@@ -421,6 +463,8 @@ def login_student():
         student.login_time = datetime.now()
         student.last_active_time = datetime.now()
         student.current_room = room_code
+        student.current_bssid = current_bssid
+        student.is_active = True
         
         db.session.commit()
         
@@ -445,6 +489,38 @@ def student_dashboard():
     student = Student.query.get(student_id)
     
     return render_template('student_dashboard.html', student=student)
+
+# Endpoint for the client to report its current BSSID
+@app.route('/update_wifi_status', methods=['POST'])
+def update_wifi_status():
+    if 'student_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in'})
+        
+    student_id = session.get('student_id')
+    student = Student.query.get(student_id)
+    
+    if not student or not student.current_room:
+        return jsonify({'success': False, 'message': 'Student not properly logged in'})
+    
+    # Get current BSSID
+    current_bssid = get_wifi_bssid()
+    
+    # Get the room's expected BSSID
+    room = Room.query.filter_by(room_code=student.current_room).first()
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found'})
+    
+    # Update student's current BSSID and active status
+    student.current_bssid = current_bssid
+    student.is_active = (current_bssid == room.bssid)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True, 
+        'is_active': student.is_active,
+        'current_bssid': current_bssid,
+        'expected_bssid': room.bssid
+    })
 
 # Logout route
 @app.route('/logout', methods=['POST'])
@@ -471,6 +547,8 @@ def logout():
             student.current_room = None
             student.login_time = None
             student.last_active_time = None
+            student.current_bssid = None
+            student.is_active = True  # Reset active status
             db.session.commit()
 
         # Clear student session
@@ -517,6 +595,8 @@ def logout_s():
             student.current_room = None
             student.login_time = None
             student.last_active_time = None
+            student.current_bssid = None
+            student.is_active = True  # Reset active status
             db.session.commit()
 
         # Clear student session
@@ -539,9 +619,6 @@ def logout_s():
 
     return jsonify({'success': True, 'message': 'Logged out successfully', 'redirect': url_for('index')})
 
-
-
-
 # Update student activity
 @app.route('/update_activity', methods=['POST'])
 def update_activity():
@@ -551,6 +628,15 @@ def update_activity():
         
         if student:
             student.last_active_time = datetime.now()
+            
+            # Also check WiFi connection
+            if student.current_room:
+                room = Room.query.filter_by(room_code=student.current_room).first()
+                if room:
+                    current_bssid = get_wifi_bssid()
+                    student.current_bssid = current_bssid
+                    student.is_active = (current_bssid == room.bssid)
+            
             db.session.commit()
             
     return jsonify({'success': True})
@@ -574,10 +660,12 @@ def active_students():
         else:
             active_time = "00:00:00"
         
-        # Check if student is active within last 2 minutes
-        status = "Active"
-        if student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
-            status = "Inactive"
+        # Check if student is connected to correct WiFi
+        status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
+        
+        # Also check if student is active within last 2 minutes as a backup
+        if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
+            status = "Inactive (No Activity)"
             
         students_list.append({
             'student_id': student.student_id,
@@ -657,8 +745,6 @@ def download_student_attendance():
         as_attachment=True,
         download_name=f'attendance_{student.student_id}.csv'
     )
-
-
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"),debug=True)
