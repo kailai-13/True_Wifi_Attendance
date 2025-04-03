@@ -5,20 +5,13 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import csv
 from datetime import datetime, timedelta
-import numpy as np
-import cv2
-import base64
 import os
-from ultralytics import YOLO
-from flask_session import Session
 import threading
 import time
+import io  # Added for in-memory file handling
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
-
-# Load YOLOv8 face detection model
-face_model = YOLO('yolov8n.pt')  # Ensure you have the YOLOv8 face model
 
 app = Flask(__name__)
 
@@ -34,6 +27,9 @@ app.config['SQLALCHEMY_BINDS'] = {
 
 app.config['SECRET_KEY'] = 'supersecretkey'
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Silence the deprecation warning
+
+from flask_session import Session
 Session(app)
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -273,7 +269,7 @@ def create_room():
     
     return jsonify({'success': True, 'message': f'Room {room_code} created successfully'})
 
-# Add room members (NEW)
+# Add room members
 @app.route('/add_room_members/<room_code>', methods=['GET', 'POST'])
 def add_room_members(room_code):
     if 'admin_id' not in session:
@@ -321,7 +317,7 @@ def add_room_members(room_code):
                            room=room, 
                            members=members)
 
-# Bulk upload members via CSV (NEW)
+# Bulk upload members via CSV
 @app.route('/upload_members/<room_code>', methods=['POST'])
 def upload_members(room_code):
     if 'admin_id' not in session:
@@ -375,7 +371,7 @@ def upload_members(room_code):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error processing file: {str(e)}'})
 
-# Delete room member (NEW)
+# Delete room member
 @app.route('/delete_room_member/<room_code>/<int:member_id>', methods=['POST'])
 def delete_room_member(room_code, member_id):
     if 'admin_id' not in session:
@@ -438,7 +434,7 @@ def close_room(room_code):
 
     return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
 
-# Student registration - MODIFIED
+# FIXED: Student registration - Fixed to properly check existence
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
@@ -450,13 +446,21 @@ def register_student():
         # Verify that this student is allowed in this room
         room_member = RoomMember.query.filter_by(
             room_code=room_code,
-            roll_number=roll_number,
-            username=username,
-            is_registered=False
+            roll_number=roll_number
         ).first()
         
         if not room_member:
-            flash("Invalid registration details. Please check your roll number, room code, and username.")
+            flash("Invalid registration details. Please check your roll number and room code.")
+            return redirect(url_for('register_student'))
+
+        # Check if member is already registered
+        if room_member.is_registered:
+            flash("This student is already registered for this room")
+            return redirect(url_for('register_student'))
+
+        # Verify username matches what admin provided
+        if room_member.username != username:
+            flash("The username does not match what was assigned by the admin")
             return redirect(url_for('register_student'))
         
         # Check if roll number is already registered
@@ -477,23 +481,27 @@ def register_student():
         # Mark as registered in room members
         room_member.is_registered = True
         
-        db.session.add(new_student)
-        db.session.commit()
-        
-        flash("Registration successful")
-        return redirect(url_for('login_student'))
+        try:
+            db.session.add(new_student)
+            db.session.commit()
+            flash("Registration successful")
+            return redirect(url_for('login_student'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error during registration: {str(e)}")
+            return redirect(url_for('register_student'))
     
     # Get all active rooms for dropdown
     active_rooms = Room.query.filter_by(active=True).all()
     return render_template('register_student.html', active_rooms=active_rooms)
 
-# Check if eligible to register (NEW AJAX endpoint)
+# FIXED: Check if eligible to register - Fixed to properly check existence
 @app.route('/check_eligibility', methods=['POST'])
 def check_eligibility():
     roll_number = request.form.get('roll_number')
     room_code = request.form.get('room_code')
     
-    # Check if already registered
+    # Check if already registered as a student
     existing_student = Student.query.filter_by(roll_number=roll_number).first()
     if existing_student:
         return jsonify({
@@ -504,23 +512,29 @@ def check_eligibility():
     # Find matching room member
     room_member = RoomMember.query.filter_by(
         room_code=room_code,
-        roll_number=roll_number,
-        is_registered=False
+        roll_number=roll_number
     ).first()
     
-    if room_member:
-        return jsonify({
-            'eligible': True,
-            'username': room_member.username,
-            'message': 'You are eligible to register'
-        })
-    else:
+    if not room_member:
         return jsonify({
             'eligible': False,
-            'message': 'You are not on the list for this room or already registered'
+            'message': 'You are not on the list for this room'
         })
+    
+    # Check if member is already registered
+    if room_member.is_registered:
+        return jsonify({
+            'eligible': False,
+            'message': 'This student is already registered for this room'
+        })
+        
+    return jsonify({
+        'eligible': True,
+        'username': room_member.username,
+        'message': 'You are eligible to register'
+    })
 
-# Student login - MODIFIED
+# Student login
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
@@ -723,7 +737,7 @@ def active_students():
     
     return jsonify(students_list)
 
-# Download attendance records
+
 @app.route('/download_attendance/<room_code>')
 def download_attendance(room_code):
     if 'admin_id' not in session:
@@ -742,30 +756,80 @@ def download_attendance(room_code):
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
     
     with open(temp_file.name, 'w', newline='') as csvfile:
-        fieldnames = ['roll_number', 'username', 'login_time', 'logout_time', 'active_duration']
+        fieldnames = ['roll_number', 'username', 'login_time', 'current_status', 'active_duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
-        # Get attendance records for this room
-        records = AttendanceRecord.query.filter_by(room_code=room_code).all()
         
-        for record in records:
-            student = Student.query.filter_by(roll_number=record.roll_number).first()
-            username = student.username if student else "Unknown"
+        # Get only currently active students in this room
+        active_students = Student.query.filter_by(
+            current_room=room_code, 
+            is_logged_in=True
+        ).all()
+        
+        for student in active_students:
+            # Calculate active duration for currently logged in students
+            active_duration = 0
+            if student.login_time:
+                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
             
             writer.writerow({
-                'roll_number': record.roll_number,
-                'username': username,
-                'login_time': record.login_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'logout_time': record.logout_time.strftime('%Y-%m-%d %H:%M:%S') if record.logout_time else 'N/A',
-                'active_duration': f"{record.active_duration:.2f} minutes"
+                'roll_number': student.roll_number,
+                'username': student.username,
+                'login_time': student.login_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'current_status': "Active" if student.is_active else "Inactive",
+                'active_duration': f"{active_duration:.2f} minutes"
             })
     
     return send_file(
         temp_file.name,
         as_attachment=True,
-        download_name=f'attendance_{room_code}.csv'
+        download_name=f'current_attendance_{room_code}.csv'
     )
+@app.route('/download_student_attendance')
+def download_student_attendance():
+    if 'student_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_student'))
+    
+    student_id = session.get('student_id')
+    student = Student.query.get(student_id)
+    
+    if not student or not student.is_logged_in:
+        flash("Student not found or not currently active")
+        return redirect(url_for('login_student'))
 
+    # Get current room details
+    room = Room.query.filter_by(room_code=student.current_room).first()
+    room_name = room.room_code if room else "Unknown Room"
+
+    # Create temporary CSV file
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+    
+    with open(temp_file.name, 'w', newline='') as csvfile:
+        fieldnames = ['roll_number', 'room_name', 'login_time', 'current_status', 'active_duration']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        
+        # Only show current session if student is active
+        if student.is_logged_in:
+            active_duration = (datetime.now() - student.login_time).total_seconds() / 60
+            
+            writer.writerow({
+                'roll_number': student.roll_number,
+                'room_name': room_name,
+                'login_time': student.login_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'current_status': "Active" if student.is_active else "Inactive",
+                'active_duration': f"{active_duration:.2f} minutes"
+            })
+    
+    return send_file(
+        temp_file.name,
+        as_attachment=True,
+        download_name=f'current_attendance_{student.roll_number}.csv'
+    )
+    
 if __name__ == '__main__':
     app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"),debug=True)
