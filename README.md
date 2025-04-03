@@ -1,178 +1,116 @@
+# **🎯 Smart Attendance System**  
+**A Modern, WiFi-Based Classroom Attendance Tracker**  
 
-# Attendance System with Face Recognition
+---
 
-A Flask-based web application for tracking student attendance using face recognition and WiFi BSSID verification. Features separate dashboards for administrators and students with real-time tracking capabilities.
+## **✨ Key Features**  
+| Feature | Benefit |
+|---------|---------|
+| **🔒 WiFi BSSID Verification** | Ensures physical presence by matching student/admin WiFi |
+| **📊 Real-Time Monitoring** | Live dashboard shows active students with connection status |
+| **📝 Automated Records** | Generates attendance logs with timestamps |
+| **👨‍🏫 Multi-Room Support** | Admins can manage multiple classrooms |
+| **📤 CSV Export** | One-click download of attendance reports |
 
-## Features
+---
 
-- **Admin Features**:
-  - Create/manage virtual classrooms
-  - View real-time student presence
-  - Download full attendance reports
-  - Close classrooms and log out all students
-  - WiFi network restriction enforcement
-
-- **Student Features**:
-  - Secure face registration
-  - Multi-factor authentication (password + face)
-  - Session duration tracking
-  - Personal attendance history download
-  - Automatic session maintenance
-
-## Prerequisites
-
-- Python 3.8+
-- OpenSSL
-- Web browser with camera access
-- Required Packages:
-  ```bash
-  pip install flask flask-sqlalchemy flask-bcrypt opencv-python numpy ultralytics flask-session
-
-
-## Installation
-
-1. **Clone Repository**:
-   ```bash
-   git clone https://github.com/yourusername/attendance-system.git
-   cd attendance-system
-   ```
-
-2. **Set Up Virtual Environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   venv\Scripts\activate    # Windows
-   ```
-
-3. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Generate SSL Certificates**:
-   ```bash
-   openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
-   ```
-
-5. **Initialize Databases**:
-   ```bash
-   flask shell
-   >>> db.create_all()
-   >>> exit()
-   ```
-
-## Configuration
-
-1. **YOLO Model Setup**:
-   - Place `yolov8n.pt` in project root (download from Ultralytics)
-   
-2. **Environment Variables**:
-   ```bash
-   export FLASK_SECRET_KEY='your-secret-key'
-   ```
-
-## Usage
-
-### Admin Portal
-
-1. **Access**:
-   - Navigate to `https://localhost:5000/login_admin`
-
-2. **Registration**:
-   - First-time admin registration requires secret key (configure in code)
-
-3. **Create Classroom**:
-   - After login, enter room code in dashboard
-   - System captures current WiFi BSSID automatically
-
-4. **Manage Attendance**:
-   - View real-time student presence
-   - Close classrooms to log out all students
-   - Download CSV reports from dashboard
-
-### Student Portal
-
-1. **Registration**:
-   - Visit `https://localhost:5000/register_student`
-   - Provide student ID, username, password
-   - Capture face using webcam interface
-
-2. **Login**:
-   - Select active classroom from dropdown
-   - Enter password and perform face verification
-   - System validates WiFi network match
-
-3. **Session Maintenance**:
-   - Automatic session extension with activity
-   - Manual logout available in dashboard
-
-4. **Attendance Records**:
-   - Download personal history as CSV
-   - Includes room codes and session durations
-
-## Technical Architecture
-
+## **🚀 How It Works**  
+### **System Flow**  
 ```mermaid
-graph TD
-    A[Client Browser] --> B[HTTPS Server]
-    B --> C{Authentication}
-    C -->|Admin| D[Admin Dashboard]
-    C -->|Student| E[Student Dashboard]
-    D --> F[Room Management]
-    D --> G[Attendance Reports]
-    E --> H[Face Verification]
-    E --> I[Session Tracking]
-    F --> J[SQLite Database]
-    G --> J
-    H --> K[YOLOv8 Model]
-    I --> J
+flowchart TD
+    A[Admin Creates Room] --> B[Stores WiFi BSSID]
+    B --> C[Students Register]
+    C --> D[Login with WiFi Check]
+    D --> E{Valid BSSID?}
+    E -->|Yes| F[Track Attendance]
+    E -->|No| G[Block Access]
+    F --> H[Generate Reports]
 ```
 
-## Security Features
+### **Database Structure**  
+```mermaid
+erDiagram
+    ADMIN ||--o{ ROOM : creates
+    ROOM ||--o{ ROOM_MEMBER : has
+    STUDENT {
+        string roll_number PK
+        string username
+        string password
+        string current_room
+        string current_bssid
+        bool is_active
+    }
+    ATTENDANCE_RECORD {
+        int id PK
+        string roll_number FK
+        string room_code
+        datetime login_time
+        datetime logout_time
+        float duration
+    }
+```
 
-- Encrypted HTTPS communication
-- Bcrypt password hashing
-- Session-based authentication
-- WiFi BSSID verification
-- Face encoding storage (Base64)
-- Automatic session termination
+---
 
-## Troubleshooting
+## **🛠 Setup Guide**  
 
-**Face Recognition Issues**:
-- Ensure good lighting conditions
-- Remove obstructions (glasses/masks)
-- Position face centrally in frame
+### **Requirements**  
+- Python 3.8+
+- Flask, SQLAlchemy, Bcrypt
+- WiFi-enabled device
 
-**Network Errors**:
-- Verify matching WiFi network
-- Check admin's current BSSID
-- Confirm room is active
+### **Installation**  
+```bash
+# Clone repository
+git clone https://github.com/your-repo/smart-attendance.git
+cd smart-attendance
 
-**Session Problems**:
-- Refresh page to update status
-- Manually log out and retry
-- Clear browser cache if persistent
+# Install dependencies
+pip install -r requirements.txt
 
-## API Endpoints
+# Initialize database
+flask db upgrade
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/update_activity` | POST | Updates student active timestamp |
-| `/active_students` | GET | Returns JSON of current attendees |
-| `/verify_face` | POST | Processes face verification attempt |
+# Run application
+flask run --cert=adhoc  # HTTPS enabled
+```
 
-## License
+---
 
-MIT License - See [LICENSE](LICENSE) for details
+## **📈 Sample Reports**  
 
-## Contributing
+**Attendance CSV Format:**  
+```csv
+roll_number,room_code,login_time,logout_time,duration_min,status
+STU101,CS101,2023-10-20 09:00:00,2023-10-20 11:00:00,120.00,Completed
+STU102,MATH202,2023-10-20 13:00:00,N/A,75.50,Active
+```
 
-1. Fork repository
-2. Create feature branch
-3. Submit pull request
-4. Include detailed documentation
+---
 
-## Support
+## **🎨 UI Screenshots**  
+<div align="center">
+  <img src="screenshots/admin-dash.png" width="45%" alt="Admin Dashboard">
+  <img src="screenshots/student-view.png" width="45%" alt="Student Portal">
+</div>
 
-For assistance, contact: [kailainathan2006@gmail.com](mailto:kailainathan2006@gmail.com)
+---
+
+## **📜 License**  
+MIT License - Free for academic and commercial use  
+
+---
+
+## **📌 Key Advantages**  
+✅ **Prevents Proxy Attendance** (WiFi verification)  
+✅ **Zero Hardware Cost** (Works with existing devices)  
+✅ **Easy Deployment** (Single-server solution)  
+✅ **Comprehensive Reporting** (Historical data export)  
+
+---
+
+**💡 Pro Tip:** For large classrooms, consider adding a background WiFi scanner to automate BSSID detection!
+
+---
+
+
