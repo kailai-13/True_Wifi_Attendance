@@ -795,40 +795,49 @@ def download_student_attendance():
     student_id = session.get('student_id')
     student = Student.query.get(student_id)
     
-    if not student or not student.is_logged_in:
-        flash("Student not found or not currently active")
+    if not student:
+        flash("Student not found")
         return redirect(url_for('login_student'))
 
-    # Get current room details
-    room = Room.query.filter_by(room_code=student.current_room).first()
-    room_name = room.room_code if room else "Unknown Room"
+    # Get all attendance records for this student
+    records = AttendanceRecord.query.filter_by(roll_number=student.roll_number).order_by(AttendanceRecord.login_time.desc()).all()
 
     # Create temporary CSV file
     import tempfile
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
     
     with open(temp_file.name, 'w', newline='') as csvfile:
-        fieldnames = ['roll_number', 'room_name', 'login_time', 'current_status', 'active_duration']
+        fieldnames = [
+            'roll_number',
+            'username',
+            'room_code', 
+            'login_time', 
+            'logout_time', 
+            'active_duration(minutes)',
+            'status'
+        ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
         
-        # Only show current session if student is active
-        if student.is_logged_in:
-            active_duration = (datetime.now() - student.login_time).total_seconds() / 60
+        for record in records:
+            # Determine status based on logout time
+            status = "Completed" if record.logout_time else "Active" if student.is_logged_in and student.current_room == record.room_code else "Incomplete"
             
             writer.writerow({
                 'roll_number': student.roll_number,
-                'room_name': room_name,
-                'login_time': student.login_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'current_status': "Active" if student.is_active else "Inactive",
-                'active_duration': f"{active_duration:.2f} minutes"
+                'username': student.username,
+                'room_code': record.room_code,
+                'login_time': record.login_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'logout_time': record.logout_time.strftime('%Y-%m-%d %H:%M:%S') if record.logout_time else "N/A",
+                'active_duration(minutes)': f"{record.active_duration:.2f}" if record.active_duration else "N/A",
+                'status': status
             })
     
     return send_file(
         temp_file.name,
         as_attachment=True,
-        download_name=f'current_attendance_{student.roll_number}.csv'
+        download_name=f'attendance_history_{student.roll_number}.csv'
     )
     
 if __name__ == '__main__':
