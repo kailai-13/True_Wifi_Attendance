@@ -1,2 +1,2 @@
-.instance
-.flask_session
+*.instance
+*.flask_session

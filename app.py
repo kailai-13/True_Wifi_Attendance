@@ -54,7 +54,7 @@ class Room(db.Model):
     active = db.Column(db.Boolean, default=True)
     bssid = db.Column(db.String(100))  # Store the BSSID when room was created
 
-# New table for room members defined by admin
+# Add these new fields to the RoomMember model
 class RoomMember(db.Model):
     __bind_key__ = 'room_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -62,10 +62,10 @@ class RoomMember(db.Model):
     roll_number = db.Column(db.String(50), nullable=False)
     username = db.Column(db.String(50), nullable=False)
     is_registered = db.Column(db.Boolean, default=False)  # Track if student has registered
+    status = db.Column(db.String(20), default='Not Present')  # Not Present, Present, OD, Excused
     
     # Composite unique constraint
     __table_args__ = (db.UniqueConstraint('room_code', 'roll_number', name='_room_roll_uc'),)
-
 # Update the Student model with room info and roll number
 class Student(db.Model):
     __bind_key__ = 'student_db'
@@ -203,41 +203,12 @@ def admin_dashboard():
     if 'admin_id' not in session:
         flash("Please login first")
         return redirect(url_for('login_admin'))
-        
-    # Get students who are currently logged in
-    students_present = []
-    active_students = Student.query.filter_by(is_logged_in=True).all()
     
-    for student in active_students:
-        # Calculate active time
-        if student.login_time:
-            active_duration = datetime.now() - student.login_time
-            hours, remainder = divmod(active_duration.seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
-        else:
-            active_time = "00:00:00"
-        
-        # Check connection status
-        status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
-        
-        # Also check if student is active within last 2 minutes as a backup
-        if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
-            status = "Inactive (No Activity)"
-            
-        students_present.append({
-            'roll_number': student.roll_number,
-            'username': student.username,
-            'status': status,
-            'active_time': active_time,
-            'room': student.current_room
-        })
-        
     # Get all rooms created by this admin
     admin_id = session.get('admin_id')
     rooms = Room.query.filter_by(admin_id=admin_id).all()
     
-    return render_template('admin_dashboard.html', students_present=students_present, rooms=rooms)
+    return render_template('admin_dashboard.html', rooms=rooms)
 
 # Create a new room
 @app.route('/create_room', methods=['POST'])
@@ -316,7 +287,74 @@ def add_room_members(room_code):
     return render_template('add_room_members.html', 
                            room=room, 
                            members=members)
-
+# Modified to get all room members for admin dashboard
+@app.route('/room_members/<room_code>')
+def get_room_members(room_code):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found or you don\'t have permission'})
+    
+    # Get all members for this room
+    members = RoomMember.query.filter_by(room_code=room_code).all()
+    
+    # Build member list with status
+    member_list = []
+    for member in members:
+        # Check if student is online
+        student = Student.query.filter_by(
+            roll_number=member.roll_number,
+            current_room=room_code,
+            is_logged_in=True
+        ).first()
+        
+        active_status = "N/A"
+        active_time = "N/A"
+        
+        if student:
+            # Calculate active time
+            if student.login_time:
+                active_duration = datetime.now() - student.login_time
+                hours, remainder = divmod(active_duration.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                active_time = f"{hours:02}:{minutes:02}:{seconds:02}"
+            
+            # Check connection status
+            active_status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
+            
+            # Also check if student is active within last 2 minutes as a backup
+            if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
+                active_status = "Inactive (No Activity)"
+        
+        member_list.append({
+            'roll_number': member.roll_number,
+            'username': member.username,
+            'status': member.status,
+            'active_status': active_status if member.status == 'Present' else "N/A",
+            'active_time': active_time if member.status == 'Present' else "N/A",
+            'is_registered': member.is_registered
+        })
+    
+    # Count statistics
+    total_members = len(member_list)
+    present_count = sum(1 for m in member_list if m['status'] == 'Present')
+    od_count = sum(1 for m in member_list if m['status'] == 'OD')
+    excused_count = sum(1 for m in member_list if m['status'] == 'Excused')
+    
+    return jsonify({
+        'success': True,
+        'members': member_list,
+        'stats': {
+            'total': total_members,
+            'present': present_count,
+            'od': od_count,
+            'excused': excused_count
+        }
+    })
 # Bulk upload members via CSV
 @app.route('/upload_members/<room_code>', methods=['POST'])
 def upload_members(room_code):
@@ -391,6 +429,53 @@ def delete_room_member(room_code, member_id):
     db.session.commit()
     
     return jsonify({'success': True, 'message': 'Member removed successfully'})
+# New route to mark student as excused or on duty
+@app.route('/update_student_status', methods=['POST'])
+def update_student_status():
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    roll_number = request.form.get('roll_number')
+    room_code = request.form.get('room_code')
+    status = request.form.get('status')  # 'OD' or 'Excused'
+    
+    if not all([roll_number, room_code, status]) or status not in ['OD', 'Excused', 'Not Present']:
+        return jsonify({'success': False, 'message': 'Invalid parameters'})
+    
+    # Find the room member
+    member = RoomMember.query.filter_by(room_code=room_code, roll_number=roll_number).first()
+    if not member:
+        return jsonify({'success': False, 'message': 'Student not found in this room'})
+    
+    # Update status
+    member.status = status
+    
+    # If student is logged in and being marked as OD or Excused, update their status too
+    student = Student.query.filter_by(roll_number=roll_number, current_room=room_code).first()
+    if student and student.is_logged_in:
+        # For excused students, we'll still keep them logged in but marked as excused
+        # For OD students, we'll log them out
+        if status == 'OD':
+            # Create attendance record
+            if student.login_time:
+                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
+                attendance = AttendanceRecord(
+                    roll_number=student.roll_number,
+                    room_code=room_code,
+                    login_time=student.login_time,
+                    logout_time=datetime.now(),
+                    active_duration=active_duration
+                )
+                db.session.add(attendance)
+
+            # Reset student login status
+            student.is_logged_in = False
+            student.current_room = None
+            student.login_time = None
+            student.last_active_time = None
+    
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Student marked as {status}'})
 
 @app.route('/close_room/<room_code>', methods=['POST'])
 def close_room(room_code):
@@ -534,7 +619,7 @@ def check_eligibility():
         'message': 'You are eligible to register'
     })
 
-# Student login
+# Update to room login to update member status
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
@@ -582,6 +667,9 @@ def login_student():
         student.current_room = room_code
         student.current_bssid = current_bssid
         student.is_active = True
+        
+        # Update room member status
+        room_member.status = 'Present'
         
         db.session.commit()
         
@@ -640,6 +728,7 @@ def update_wifi_status():
     })
 
 # Logout route
+# Modified to update a student's status on logout
 @app.route('/logout', methods=['POST'])
 def logout():
     if 'student_id' in session:
@@ -658,6 +747,15 @@ def logout():
                     active_duration=active_duration
                 )
                 db.session.add(attendance)
+
+            # Update room member status when student logs out
+            room_member = RoomMember.query.filter_by(
+                room_code=student.current_room,
+                roll_number=student.roll_number
+            ).first()
+            
+            if room_member and room_member.status == 'Present':
+                room_member.status = 'Not Present'
 
             # Reset student login status
             student.is_logged_in = False

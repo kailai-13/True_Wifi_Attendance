@@ -5,7 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Dashboard</h1>
+        <button class="logout-btn danger" onclick="logout()">LOGOUT</button>
+        
+        <div class="room-management">
+            <h2>Room Management</h2>
+            <div>
+                <input type="text" id="room-code" placeholder="Enter room code">
+                <button onclick="createRoom()">Create New Room</button>
+            </div>
+            
+            <h3>Active Rooms</h3>
+            <ul class="room-list" id="room-list">
+                {% for room in rooms %}
+                    <li>
+                        <span>{{ room.room_code }} (Created: {{ room.created_at.strftime('%Y-%m-%d %H:%M') }})</span>
+                        <div class="room-buttons">
+                            <button onclick="selectRoom('{{ room.room_code }}')">View Members</button>
+                            <button onclick="manageRoomMembers('{{ room.room_code }}')">Manage Members</button>
+                            <button onclick="downloadAttendance('{{ room.room_code }}')">Download Attendance</button>
+                            <button class="danger" onclick="closeRoom('{{ room.room_code }}')">Close Room</button>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="room-view" id="room-view" style="display:none;">
+            <h2>Room: <span id="current-room-code"></span></h2>
+            
+            <div class="stats-panel" id="stats-panel">
+                <div class="stat-card">
+                    <h3>Total Members</h3>
+                    <div class="count" id="total-count">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Present</h3>
+                    <div class="count" id="present-count">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>On Duty (OD)</h3>
+                    <div class="count" id="od-count">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Excused</h3>
+                    <div class="count" id="excused-count">0</div>
+                </div>
+            </div>
+            
+            <div class="room-tabs">
+                <div class="tab-buttons">
+                    <button class="tab-button active" onclick="showTab('all-members')">All Members</button>
+                    <button class="tab-button" onclick="showTab('present-members')">Present</button>
+                    <button class="tab-button" onclick="showTab('od-members')">On Duty</button>
+                    <button class="tab-button" onclick="showTab('excused-members')">Excused</button>
+                    <button class="tab-button" onclick="showTab('not-present-members')">Absent</button>
+                </div>
+                
+                <div class="tab-content active" id="all-members">
+                    <div class="members-grid" id="all-members-grid"></div>
+                </div>
+                
+                <div class="tab-content" id="present-members">
+                    <div class="members-grid" id="present-members-grid"></div>
+                </div>
+                
+                <div class="tab-content" id="od-members">
+                    <div class="members-grid" id="od-members-grid"></div>
+                </div>
+                
+                <div class="tab-content" id="excused-members">
+                    <div class="members-grid" id="excused-members-grid"></div>
+                </div>
+                
+                <div class="tab-content" id="not-present-members">
+                    <div class="members-grid" id="not-present-members-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let currentRoom = null;
+        let updateInterval = null;
+
         function createRoom() {
             const roomCode = document.getElementById('room-code').value;
             if (!roomCode) {
@@ -32,7 +119,7 @@
         }
 
         function closeRoom(roomCode) {
-            if (confirm(`Are you sure you want to close ${roomCode}?`)) {
+            if (confirm(`Are you sure you want to close ${roomCode}? This will log out all students and delete the room.`)) {
                 fetch(`/close_room/${roomCode}`, { method: "POST" })
                     .then(response => response.json())
                     .then(data => {
@@ -68,98 +155,157 @@
                     alert('Failed to logout. Please try again.');
                 });
         }
-
-        // Function to update student list
-        function updateStudentList() {
-            fetch("/active_students")
+        
+        function selectRoom(roomCode) {
+            currentRoom = roomCode;
+            document.getElementById('current-room-code').textContent = roomCode;
+            document.getElementById('room-view').style.display = 'block';
+            
+            // Clear any existing update interval
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            // Initial load of room members
+            fetchRoomMembers();
+            
+            // Set interval to refresh data every 5 seconds
+            updateInterval = setInterval(fetchRoomMembers, 5000);
+            
+            // Scroll to room view
+            document.getElementById('room-view').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function fetchRoomMembers() {
+            if (!currentRoom) return;
+            
+            fetch(`/room_members/${currentRoom}`)
                 .then(response => response.json())
                 .then(data => {
-                    const studentList = document.getElementById('student-list');
-                    studentList.innerHTML = ''; // Clear current list
-
-                    // Rebuild the table with updated data
-                    data.forEach(student => {
-                        const row = document.createElement('tr');
-                        
-                        const rollNumberCell = document.createElement('td');
-                        rollNumberCell.textContent = student.roll_number;
-                        
-                        const usernameCell = document.createElement('td');
-                        usernameCell.textContent = student.username;
-                        
-                        const statusCell = document.createElement('td');
-                        statusCell.textContent = student.status;
-                        
-                        const activeTimeCell = document.createElement('td');
-                        activeTimeCell.textContent = student.active_time;
-                        
-                        const roomCell = document.createElement('td');
-                        roomCell.textContent = student.room;
-                        
-                        row.appendChild(rollNumberCell);
-                        row.appendChild(usernameCell);
-                        row.appendChild(statusCell);
-                        row.appendChild(activeTimeCell);
-                        row.appendChild(roomCell);
-                        
-                        studentList.appendChild(row);
-                    });
+                    if (data.success) {
+                        updateRoomStats(data.stats);
+                        updateMembersGrid(data.members);
+                    } else {
+                        alert(data.message);
+                    }
                 })
                 .catch(error => {
-                    console.error('Error fetching student data:', error);
+                    console.error('Error fetching room members:', error);
                 });
         }
-
-        // Update student list every second
-        document.addEventListener('DOMContentLoaded', function() {
-            updateStudentList();
-            setInterval(updateStudentList, 1000);
-        });
-    </script>
-</head>
-<body>
-    <h1>Admin Dashboard</h1>
-    <div class="room-management">
-        <h2>Room Management</h2>
-        <div>
-            <input type="text" id="room-code" placeholder="Enter room code">
-            <button onclick="createRoom()">Create New Room</button>
-        </div>
         
-        <h3>Active Rooms</h3>
-        <ul id="room-list">
-            {% for room in rooms %}
-                <li>
-                    {{ room.room_code }} (Created: {{ room.created_at.strftime('%Y-%m-%d %H:%M') }})
-                    <button onclick="manageRoomMembers('{{ room.room_code }}')">Manage Members</button>
-                    <button onclick="downloadAttendance('{{ room.room_code }}')">Download Attendance</button>
-                    <button onclick="closeRoom('{{ room.room_code }}')">Close Room</button>
-                </li>
-            {% endfor %}
-        </ul>
-    </div>
-
-    <h2>Currently Connected Students</h2>
-    <table border="1">
-        <tr>
-            <th>Roll Number</th>
-            <th>Username</th>
-            <th>Status</th>
-            <th>Active Time</th>
-            <th>Room</th>
-        </tr>
-        <tbody id="student-list">
-            {% for student in students_present %}
-                <tr>
-                    <td>{{ student.roll_number }}</td>
-                    <td>{{ student.username }}</td>
-                    <td>{{ student.status }}</td>
-                    <td>{{ student.active_time }}</td>
-                    <td>{{ student.room }}</td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <button onclick="logout()">LOGOUT</button>
+        function updateRoomStats(stats) {
+            document.getElementById('total-count').textContent = stats.total;
+            document.getElementById('present-count').textContent = stats.present;
+            document.getElementById('od-count').textContent = stats.od;
+            document.getElementById('excused-count').textContent = stats.excused;
+        }
+        
+        function updateMembersGrid(members) {
+            // Clear existing grids
+            document.getElementById('all-members-grid').innerHTML = '';
+            document.getElementById('present-members-grid').innerHTML = '';
+            document.getElementById('od-members-grid').innerHTML = '';
+            document.getElementById('excused-members-grid').innerHTML = '';
+            document.getElementById('not-present-members-grid').innerHTML = '';
+            
+            // Populate grids
+            members.forEach(member => {
+                const card = createMemberCard(member);
+                
+                // Add to all members grid
+                document.getElementById('all-members-grid').appendChild(card.cloneNode(true));
+                
+                // Add to specific status grid
+                if (member.status === 'Present') {
+                    document.getElementById('present-members-grid').appendChild(card.cloneNode(true));
+                } else if (member.status === 'OD') {
+                    document.getElementById('od-members-grid').appendChild(card.cloneNode(true));
+                } else if (member.status === 'Excused') {
+                    document.getElementById('excused-members-grid').appendChild(card.cloneNode(true));
+                } else {
+                    document.getElementById('not-present-members-grid').appendChild(card.cloneNode(true));
+                }
+            });
+        }
+        
+        function createMemberCard(member) {
+            const card = document.createElement('div');
+            card.className = `member-card ${member.status.toLowerCase().replace(' ', '-')}`;
+            
+            let statusClass = '';
+            switch (member.status) {
+                case 'Present': statusClass = 'success'; break;
+                case 'OD': statusClass = 'warning'; break;
+                case 'Excused': statusClass = 'warning'; break;
+                default: statusClass = 'danger';
+            }
+            
+            card.innerHTML = `
+                <h3>${member.username}</h3>
+                <div class="member-info">
+                    <p><strong>Roll Number:</strong> ${member.roll_number}</p>
+                    <p><strong>Status:</strong> <span class="${statusClass}">${member.status}</span></p>
+                    ${member.status === 'Present' ? 
+                      `<p><strong>Connection:</strong> ${member.active_status}</p>
+                       <p><strong>Active Time:</strong> ${member.active_time}</p>` : ''}
+                    <p><strong>Registered:</strong> ${member.is_registered ? 'Yes' : 'No'}</p>
+                </div>
+                <div class="member-actions">
+                    ${member.status !== 'OD' ? 
+                      `<button class="warning" onclick="updateStatus('${member.roll_number}', 'OD')">Mark as OD</button>` : ''}
+                    ${member.status !== 'Excused' ? 
+                      `<button class="success" onclick="updateStatus('${member.roll_number}', 'Excused')">Excuse</button>` : ''}
+                    ${member.status !== 'Not Present' && member.status !== 'Present' ? 
+                      `<button class="danger" onclick="updateStatus('${member.roll_number}', 'Not Present')">Reset Status</button>` : ''}
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        function updateStatus(rollNumber, status) {
+            if (!currentRoom) return;
+            
+            fetch("/update_student_status", {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `roll_number=${encodeURIComponent(rollNumber)}&room_code=${encodeURIComponent(currentRoom)}&status=${encodeURIComponent(status)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Refresh data
+                    fetchRoomMembers();
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating status:', error);
+                alert('Failed to update student status. Please try again.');
+            });
+        }
+        
+        function showTab(tabId) {
+            // Hide all tabs
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            
+            // Update active tab button
+            const tabButtons = document.querySelectorAll('.tab-button');
+            tabButtons.forEach(button => {
+                button.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+    </script>
 </body>
 </html>
