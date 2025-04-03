@@ -5,75 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <title>Student Login</title>
+    <script>
+        // Function to handle WiFi status checking
+        function checkWifiStatus() {
+            fetch("/update_wifi_status", {
+                method: "POST"
+            })
+            .then(response => response.json())
+            .then(data => {
+                const wifiStatus = document.getElementById('wifi-status');
+                if (data.success) {
+                    if (data.is_active) {
+                        wifiStatus.textContent = "WiFi Connection: Connected to correct network";
+                        wifiStatus.style.color = "green";
+                    } else {
+                        wifiStatus.textContent = "WiFi Connection: Not connected to correct network!";
+                        wifiStatus.style.color = "red";
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking WiFi status:', error);
+            });
+        }
+    </script>
 </head>
 <body>
     <h2>Student Login</h2>
-    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% with messages = get_flashed_messages() %}
         {% if messages %}
-            {% for category, message in messages %}
+            {% for message in messages %}
                 <p style="color: red;">{{ message }}</p>
             {% endfor %}
         {% endif %}
     {% endwith %}
 
-    <form method="POST" id="login-form">
-        <label>Username:</label>
-        <input type="text" name="username" required><br><br>
+    <form method="POST">
+        <label>Roll Number:</label>
+        <input type="text" name="roll_number" id="roll_number" required><br><br>
+        
         <label>Password:</label>
         <input type="password" name="password" required><br><br>
+        
         <label>Room Code:</label>
-        <select name="room_code" required>
+        <select name="room_code" id="room_code" required>
+            <option value="">Select a room</option>
             {% for room in active_rooms %}
                 <option value="{{ room.room_code }}">{{ room.room_code }}</option>
             {% endfor %}
         </select><br><br>
-        <input type="hidden" name="face_image" id="face-image">
+        
+        <div id="wifi-status-container">
+            <p id="wifi-status">WiFi Status: Checking...</p>
+            <button type="button" onclick="checkWifiStatus()">Check WiFi Connection</button>
+        </div><br>
 
-        <div id="camera-container">
-            <h3>Face Verification</h3>
-            <video id="video" width="320" height="240" autoplay></video>
-            <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
-            <div>
-                <button type="button" id="capture-btn">Verify Face</button>
-                <p id="capture-status">Please verify your face</p>
-            </div>
-        </div>
-
-        <button type="submit" id="login-btn" disabled>Login</button>
+        <button type="submit">Login</button>
     </form>
 
+    <p>New student? <a href="{{ url_for('register_student') }}">Register here</a></p>
+
     <script>
-        // Access webcam
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const captureBtn = document.getElementById('capture-btn');
-        const loginBtn = document.getElementById('login-btn');
-        const captureStatus = document.getElementById('capture-status');
-        const faceImage = document.getElementById('face-image');
-
-        // Get access to the webcam
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error('Error accessing camera:', err);
-                captureStatus.textContent = 'Error: Cannot access camera';
-                captureStatus.style.color = 'red';
-            });
-
-        // Capture image from webcam
-        captureBtn.addEventListener('click', () => {
-            const context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg');
-
-            // Store image data in hidden form field
-            faceImage.value = imageData;
-
-            captureStatus.textContent = 'Face captured! You can now login.';
-            captureStatus.style.color = 'green';
-            loginBtn.disabled = false;
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check room code and roll number eligibility
+            const rollNumberInput = document.getElementById('roll_number');
+            const roomCodeSelect = document.getElementById('room_code');
+            
+            function checkEligibility() {
+                const rollNumber = rollNumberInput.value;
+                const roomCode = roomCodeSelect.value;
+                
+                if (rollNumber && roomCode) {
+                    const formData = new FormData();
+                    formData.append('roll_number', rollNumber);
+                    formData.append('room_code', roomCode);
+                    
+                    fetch('/check_eligibility', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const statusEl = document.createElement('p');
+                        statusEl.textContent = data.message;
+                        statusEl.style.color = data.eligible ? 'green' : 'red';
+                        
+                        // Remove any previous status message
+                        const prevStatus = document.querySelector('.eligibility-status');
+                        if (prevStatus) {
+                            prevStatus.remove();
+                        }
+                        
+                        statusEl.classList.add('eligibility-status');
+                        roomCodeSelect.parentNode.insertBefore(statusEl, roomCodeSelect.nextSibling);
+                    });
+                }
+            }
+            
+            rollNumberInput.addEventListener('blur', checkEligibility);
+            roomCodeSelect.addEventListener('change', checkEligibility);
+            
+            // Initial WiFi status check
+            checkWifiStatus();
         });
     </script>
 </body>

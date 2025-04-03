@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Room Members</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+    <script>
+        function deleteMember(roomCode, memberId) {
+            if (confirm('Are you sure you want to remove this member?')) {
+                fetch(`/delete_room_member/${roomCode}/${memberId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting member:', error);
+                    alert('Failed to delete member. Please try again.');
+                });
+            }
+        }
+
+        function uploadCsv(roomCode) {
+            const fileInput = document.getElementById('csv-file');
+            const formData = new FormData();
+            
+            if (fileInput.files.length === 0) {
+                alert('Please select a CSV file');
+                return;
+            }
+            
+            formData.append('csv_file', fileInput.files[0]);
+            
+            fetch(`/upload_members/${roomCode}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading CSV:', error);
+                alert('Failed to upload CSV. Please try again.');
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>Manage Room Members - {{ room.room_code }}</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <p style="color: red;">{{ message }}</p>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <h2>Add New Member</h2>
+    <form method="POST">
+        <label>Roll Number:</label>
+        <input type="text" name="roll_number" required>
+        <label>Username:</label>
+        <input type="text" name="username" required>
+        <button type="submit">Add Member</button>
+    </form>
+    
+    <h2>Bulk Upload Members</h2>
+    <div>
+        <p>Upload CSV file with columns: roll_number, username</p>
+        <input type="file" id="csv-file" accept=".csv">
+        <button onclick="uploadCsv('{{ room.room_code }}')">Upload</button>
+    </div>
+    
+    <h2>Current Members</h2>
+    <table border="1">
+        <tr>
+            <th>Roll Number</th>
+            <th>Username</th>
+            <th>Registration Status</th>
+            <th>Actions</th>
+        </tr>
+        {% for member in members %}
+            <tr>
+                <td>{{ member.roll_number }}</td>
+                <td>{{ member.username }}</td>
+                <td>{% if member.is_registered %}Registered{% else %}Not Registered{% endif %}</td>
+                <td>
+                    <button onclick="deleteMember('{{ room.room_code }}', {{ member.id }})">Delete</button>
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+    
+    <p><a href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a></p>
+</body>
+</html>

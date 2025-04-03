@@ -6,44 +6,97 @@
     <title>Student Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <script>
-        function logout() {
-            fetch("/logout", { 
-                method: "POST",  // Explicitly use POST
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+        // Function to update the activity status
+        function updateActivity() {
+            fetch("/update_activity", {
+                method: "POST"
             })
-            .then(() => {
-                window.location.href = "/";  // Force redirect after POST
-            })
+            .then(response => response.json())
             .catch(error => {
-                console.error('Logout failed:', error);
+                console.error('Error updating activity:', error);
             });
         }
-        function sendHeartbeat() {
-            fetch('/update_activity', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => { /* Optional handling */ });
+        
+        // Function to check WiFi status
+        function checkWiFiStatus() {
+            fetch("/update_wifi_status", {
+                method: "POST"
+            })
+            .then(response => response.json())
+            .then(data => {
+                const wifiStatusElement = document.getElementById('wifi-status');
+                if (data.success) {
+                    if (data.is_active) {
+                        wifiStatusElement.textContent = "Connected to correct WiFi network";
+                        wifiStatusElement.style.color = "green";
+                    } else {
+                        wifiStatusElement.textContent = "WARNING: Not connected to the correct WiFi network!";
+                        wifiStatusElement.style.color = "red";
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking WiFi status:', error);
+            });
         }
-        // Send immediately and every 1 minute
-        sendHeartbeat();
-        setInterval(sendHeartbeat, 60000);
+        
+        function logout() {
+            fetch("/logout", { method: "POST" })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error logging out:', error);
+                    alert('Failed to logout. Please try again.');
+                });
+        }
+        
+        // Start sending activity updates and checking WiFi every 10 seconds
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial checks
+            updateActivity();
+            checkWiFiStatus();
+            
+            // Update user activity every 10 seconds
+            setInterval(updateActivity, 10000);
+            
+            // Check WiFi connection every 30 seconds
+            setInterval(checkWiFiStatus, 30000);
+            
+            // Add event listeners for user activity
+            document.addEventListener('click', updateActivity);
+            document.addEventListener('keypress', updateActivity);
+        });
     </script>
 </head>
 <body>
-    <div class="container">
-        <h2>Welcome, {{ student.username }}!</h2>
-        <p>Student ID: <strong>{{ student.student_id }}</strong></p>
-        <p>Current Room: <strong>{{ student.current_room }}</strong></p>
-
-        <div class="button-group">
-            <a onclick='logout()' class="btn logout-btn">Logout</a>
+    <h1>Student Dashboard</h1>
+    <div class="student-info">
+        <h2>Welcome, {{ student.username }}</h2>
+        <p><strong>Roll Number:</strong> {{ student.roll_number }}</p>
+        <p><strong>Current Room:</strong> {{ student.current_room }}</p>
+        
+        {% if student.login_time %}
+            <p><strong>Login Time:</strong> {{ student.login_time.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        {% endif %}
+        
+        <div class="status-info">
+            <p id="wifi-status">Checking WiFi connection...</p>
+            <p id="active-status">Status: {{ "Active" if student.is_active else "Inactive" }}</p>
         </div>
     </div>
-    <div class="attendance-download">
-        <a href="/download_student_attendance">
-            <button>Download My Attendance Records</button>
-        </a>
+
+    <div class="important-notice">
+        <h3>Important Notice</h3>
+        <p>Please ensure you stay connected to the same WiFi network for your attendance to be recorded correctly.</p>
+        <p>If you disconnect from the correct network, your attendance may not be counted.</p>
     </div>
+    
+    <button onclick="checkWiFiStatus()">Check WiFi Connection</button>
+    <button onclick="logout()">Logout</button>
 </body>
 </html>

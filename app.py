@@ -29,7 +29,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///default.db'
 app.config['SQLALCHEMY_BINDS'] = {
     'admin_db': 'sqlite:///admin.db',
     'student_db': 'sqlite:///students.db',
-    'room_db': 'sqlite:///rooms.db'  # New database for room management
+    'room_db': 'sqlite:///rooms.db'  # Database for room management
 }
 
 app.config['SECRET_KEY'] = 'supersecretkey'
@@ -58,14 +58,25 @@ class Room(db.Model):
     active = db.Column(db.Boolean, default=True)
     bssid = db.Column(db.String(100))  # Store the BSSID when room was created
 
-# Update the Student model with face_encoding field and room info
+# New table for room members defined by admin
+class RoomMember(db.Model):
+    __bind_key__ = 'room_db'
+    id = db.Column(db.Integer, primary_key=True)
+    room_code = db.Column(db.String(50), db.ForeignKey('room.room_code'), nullable=False)
+    roll_number = db.Column(db.String(50), nullable=False)
+    username = db.Column(db.String(50), nullable=False)
+    is_registered = db.Column(db.Boolean, default=False)  # Track if student has registered
+    
+    # Composite unique constraint
+    __table_args__ = (db.UniqueConstraint('room_code', 'roll_number', name='_room_roll_uc'),)
+
+# Update the Student model with room info and roll number
 class Student(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.String(50), nullable=False, unique=True)
-    username = db.Column(db.String(50), nullable=False, unique=True)
+    roll_number = db.Column(db.String(50), nullable=False, unique=True)
+    username = db.Column(db.String(50), nullable=False)
     password = db.Column(db.String(100), nullable=False)
-    # face_encoding = db.Column(db.Text)  # Store face encoding as base64 string
     current_room = db.Column(db.String(50))  # Store current room code
     current_bssid = db.Column(db.String(100))  # Store student's current BSSID
     
@@ -77,8 +88,8 @@ class Student(db.Model):
 class AttendanceRecord(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.String(50), db.ForeignKey('student.student_id'))
-    room_code = db.Column(db.String(50))  # Added room code to attendance record
+    roll_number = db.Column(db.String(50), db.ForeignKey('student.roll_number'))
+    room_code = db.Column(db.String(50))
     login_time = db.Column(db.DateTime)
     logout_time = db.Column(db.DateTime)
     active_duration = db.Column(db.Float)  # Duration in minutes
@@ -121,10 +132,6 @@ def check_wifi_connections():
                     if not room:
                         continue
                     
-                    # Request the current BSSID from student's client
-                    # For now, we'll simulate this with a route the client calls regularly
-                    # The real implementation would use the BSSID stored in student.current_bssid
-                    
                     # If the student's BSSID doesn't match the room's BSSID, mark as inactive
                     if student.current_bssid != room.bssid:
                         student.is_active = False
@@ -135,78 +142,6 @@ def check_wifi_connections():
             except Exception as e:
                 print(f"Error in WiFi check thread: {e}")
                 time.sleep(10)  # Wait longer if there's an error
-
-def process_face_image(image_data):
-    """Process base64 image data and extract face encoding using YOLOv8"""
-    try:
-        # Decode base64 image
-        image_data = image_data.split(',')[1]
-        image_bytes = base64.b64decode(image_data)
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        
-        # Detect faces using YOLOv8
-        results = face_model(img)
-        
-        if len(results[0].boxes) == 0:
-            return None, "No face detected"
-        
-        if len(results[0].boxes) > 1:
-            return None, "Multiple faces detected"
-        
-        # Extract the face region
-        x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
-        face_img = img[int(y1):int(y2), int(x1):int(x2)]
-        
-        # Resize to standard size
-        face_img = cv2.resize(face_img, (100, 100))
-        
-        # Encode the face image to base64 for storage
-        _, buffer = cv2.imencode('.jpg', face_img)
-        face_encoded = base64.b64encode(buffer).decode('utf-8')
-        
-        return face_encoded, "Success"
-    except Exception as e:
-        return None, str(e)
-
-def verify_face(student_id, image_data):
-    """Verify if the captured face matches the stored face using YOLOv8"""
-    try:
-        # Get student by student_id
-        student = Student.query.filter_by(student_id=student_id).first()
-        if not student or not student.face_encoding:
-            return False, "Student not found or no face data"
-
-        # Process submitted image
-        image_data = image_data.split(',')[1]
-        image_bytes = base64.b64decode(image_data)
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        # Detect face using YOLOv8
-        results = face_model(img)
-        if len(results[0].boxes) != 1:
-            return False, "No or multiple faces detected"
-
-        # Extract the face region
-        x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
-        face_img = img[int(y1):int(y2), int(x1):int(x2)]
-        face_img = cv2.resize(face_img, (100, 100))
-
-        # Compare with stored face
-        stored_face_bytes = base64.b64decode(student.face_encoding)
-        stored_face_arr = np.frombuffer(stored_face_bytes, np.uint8)
-        stored_face_img = cv2.imdecode(stored_face_arr, cv2.IMREAD_COLOR)
-
-        # Simple comparison using Mean Squared Error (MSE)
-        mse = np.mean((face_img - stored_face_img) ** 2)
-        if mse < 1000:  # Adjust threshold as needed
-            return True, "Face verified"
-        else:
-            return False, f"Verification failed (MSE: {mse})"
-
-    except Exception as e:
-        return False, str(e)
 
 # Start the WiFi check thread when the app starts
 wifi_thread = threading.Thread(target=check_wifi_connections, daemon=True)
@@ -225,13 +160,7 @@ def register_admin():
         idname = request.form.get('idname')
         username = request.form.get('username')
         password = request.form.get('password')
-        secret_key = request.form.get('secret_key')
         
-        # Check if the secret key is correct (hardcoded for simplicity)
-        #if secret_key != 69420:  # You'd want a more secure approach in production
-            #flash("Invalid secret key")
-            #return redirect(url_for('register_admin'))
-            
         existing_admin = Admin.query.filter_by(username=username).first()
         if existing_admin:
             flash("Username already exists")
@@ -252,7 +181,6 @@ def register_admin():
 @app.route('/login_admin', methods=['GET', 'POST'])
 def login_admin():
     if request.method == 'POST':
-     
         username = request.form.get('username')
         password = request.form.get('password')
         
@@ -302,7 +230,7 @@ def admin_dashboard():
             status = "Inactive (No Activity)"
             
         students_present.append({
-            'student_id': student.student_id,
+            'roll_number': student.roll_number,
             'username': student.username,
             'status': status,
             'active_time': active_time,
@@ -345,6 +273,129 @@ def create_room():
     
     return jsonify({'success': True, 'message': f'Room {room_code} created successfully'})
 
+# Add room members (NEW)
+@app.route('/add_room_members/<room_code>', methods=['GET', 'POST'])
+def add_room_members(room_code):
+    if 'admin_id' not in session:
+        flash("Please login first")
+        return redirect(url_for('login_admin'))
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        flash("Room not found or you don't have permission")
+        return redirect(url_for('admin_dashboard'))
+    
+    if request.method == 'POST':
+        roll_number = request.form.get('roll_number')
+        username = request.form.get('username')
+        
+        # Check if member already exists in this room
+        existing_member = RoomMember.query.filter_by(
+            room_code=room_code, 
+            roll_number=roll_number
+        ).first()
+        
+        if existing_member:
+            flash(f"Member with roll number {roll_number} already exists in this room")
+            return redirect(url_for('add_room_members', room_code=room_code))
+        
+        # Add new member
+        new_member = RoomMember(
+            room_code=room_code,
+            roll_number=roll_number,
+            username=username,
+            is_registered=False
+        )
+        
+        db.session.add(new_member)
+        db.session.commit()
+        
+        flash(f"Member {username} ({roll_number}) added successfully")
+    
+    # Display current members
+    members = RoomMember.query.filter_by(room_code=room_code).all()
+    
+    return render_template('add_room_members.html', 
+                           room=room, 
+                           members=members)
+
+# Bulk upload members via CSV (NEW)
+@app.route('/upload_members/<room_code>', methods=['POST'])
+def upload_members(room_code):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found or you don\'t have permission'})
+    
+    # Check if file was uploaded
+    if 'csv_file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file uploaded'})
+    
+    file = request.files['csv_file']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'})
+    
+    # Process CSV file
+    try:
+        csv_content = file.read().decode('utf-8').splitlines()
+        csv_reader = csv.reader(csv_content)
+        next(csv_reader)  # Skip header row
+        
+        count = 0
+        for row in csv_reader:
+            if len(row) >= 2:  # Make sure we have roll_number and username
+                roll_number = row[0].strip()
+                username = row[1].strip()
+                
+                # Check if member already exists
+                existing_member = RoomMember.query.filter_by(
+                    room_code=room_code, 
+                    roll_number=roll_number
+                ).first()
+                
+                if not existing_member:
+                    new_member = RoomMember(
+                        room_code=room_code,
+                        roll_number=roll_number,
+                        username=username,
+                        is_registered=False
+                    )
+                    db.session.add(new_member)
+                    count += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{count} members added successfully'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing file: {str(e)}'})
+
+# Delete room member (NEW)
+@app.route('/delete_room_member/<room_code>/<int:member_id>', methods=['POST'])
+def delete_room_member(room_code, member_id):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found or you don\'t have permission'})
+    
+    member = RoomMember.query.get(member_id)
+    if not member or member.room_code != room_code:
+        return jsonify({'success': False, 'message': 'Member not found'})
+    
+    db.session.delete(member)
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Member removed successfully'})
+
 @app.route('/close_room/<room_code>', methods=['POST'])
 def close_room(room_code):
     if 'admin_id' not in session:
@@ -362,7 +413,7 @@ def close_room(room_code):
         if student.login_time:
             active_duration = (datetime.now() - student.login_time).total_seconds() / 60
             attendance = AttendanceRecord(
-                student_id=student.student_id,
+                roll_number=student.roll_number,
                 room_code=room_code,
                 login_time=student.login_time,
                 logout_time=datetime.utcnow(),
@@ -378,73 +429,125 @@ def close_room(room_code):
         student.current_bssid = None
         student.is_active = True  # Reset active status
 
+    # Delete room members
+    RoomMember.query.filter_by(room_code=room_code).delete()
+    
     # Delete the room
     db.session.delete(room)
     db.session.commit()
 
     return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
 
-# Student registration
+# Student registration - MODIFIED
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
-        student_id = request.form.get('student_id')
+        roll_number = request.form.get('roll_number')
+        room_code = request.form.get('room_code')
         username = request.form.get('username')
         password = request.form.get('password')
-       # face_image = request.form.get('face_image')
         
-        existing_student = Student.query.filter_by(username=username).first()
-        if existing_student:
-            flash("Username already exists")
+        # Verify that this student is allowed in this room
+        room_member = RoomMember.query.filter_by(
+            room_code=room_code,
+            roll_number=roll_number,
+            username=username,
+            is_registered=False
+        ).first()
+        
+        if not room_member:
+            flash("Invalid registration details. Please check your roll number, room code, and username.")
             return redirect(url_for('register_student'))
-            
-        # Process and save face image
-       # face_encoding, message = process_face_image(face_image)
-            ''' if not face_encoding:
-                        flash(f"Face registration failed: {message}")
-                        return redirect(url_for('register_student'))'''
         
+        # Check if roll number is already registered
+        existing_student = Student.query.filter_by(roll_number=roll_number).first()
+        if existing_student:
+            flash("This roll number is already registered")
+            return redirect(url_for('register_student'))
+        
+        # Create new student account
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         new_student = Student(
-            student_id=student_id,
+            roll_number=roll_number,
             username=username,
             password=hashed_password,
-           # face_encoding=face_encoding
-           is_active=True
+            is_active=True
         )
+        
+        # Mark as registered in room members
+        room_member.is_registered = True
         
         db.session.add(new_student)
         db.session.commit()
         
         flash("Registration successful")
         return redirect(url_for('login_student'))
-        
-    return render_template('register_student.html')
+    
+    # Get all active rooms for dropdown
+    active_rooms = Room.query.filter_by(active=True).all()
+    return render_template('register_student.html', active_rooms=active_rooms)
 
-# Student login
+# Check if eligible to register (NEW AJAX endpoint)
+@app.route('/check_eligibility', methods=['POST'])
+def check_eligibility():
+    roll_number = request.form.get('roll_number')
+    room_code = request.form.get('room_code')
+    
+    # Check if already registered
+    existing_student = Student.query.filter_by(roll_number=roll_number).first()
+    if existing_student:
+        return jsonify({
+            'eligible': False,
+            'message': 'This roll number is already registered'
+        })
+    
+    # Find matching room member
+    room_member = RoomMember.query.filter_by(
+        room_code=room_code,
+        roll_number=roll_number,
+        is_registered=False
+    ).first()
+    
+    if room_member:
+        return jsonify({
+            'eligible': True,
+            'username': room_member.username,
+            'message': 'You are eligible to register'
+        })
+    else:
+        return jsonify({
+            'eligible': False,
+            'message': 'You are not on the list for this room or already registered'
+        })
+
+# Student login - MODIFIED
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
-        username = request.form.get('username')
+        roll_number = request.form.get('roll_number')
         password = request.form.get('password')
-       # face_image = request.form.get('face_image')
-        room_code = request.form.get('room_code')  # Added room code field
+        room_code = request.form.get('room_code')
         
-        student = Student.query.filter_by(username=username).first()
+        student = Student.query.filter_by(roll_number=roll_number).first()
         
         if not student:
-            flash("Invalid username or password")
+            flash("Invalid roll number or password")
             return redirect(url_for('login_student'))
             
         if not bcrypt.check_password_hash(student.password, password):
-            flash("Invalid username or password")
+            flash("Invalid roll number or password")
             return redirect(url_for('login_student'))
         
-        # Verify face
-        """        face_verified, message = verify_face(student.student_id, face_image)
-                if not face_verified:
-                    flash(f"Face verification failed: {message}")
-                    return redirect(url_for('login_student'))"""
+        # Check if student is a member of this room
+        room_member = RoomMember.query.filter_by(
+            room_code=room_code,
+            roll_number=roll_number,
+            is_registered=True
+        ).first()
+        
+        if not room_member:
+            flash("You are not registered for this room")
+            return redirect(url_for('login_student'))
         
         # Verify room code exists and is active
         room = Room.query.filter_by(room_code=room_code, active=True).first()
@@ -534,7 +637,7 @@ def logout():
             if student.login_time:
                 active_duration = (datetime.now() - student.login_time).total_seconds() / 60
                 attendance = AttendanceRecord(
-                    student_id=student.student_id,
+                    roll_number=student.roll_number,
                     room_code=student.current_room,
                     login_time=student.login_time,
                     logout_time=datetime.now(),
@@ -557,63 +660,6 @@ def logout():
         session.pop('current_room', None)
 
     elif 'admin_id' in session:
-        admin_id = session.get('admin_id')
-
-        # Close all active rooms created by the admin
-        rooms = Room.query.filter_by(admin_id=admin_id).all()
-        for room in rooms:
-            db.session.delete(room)
-        db.session.commit()
-
-        # Clear admin session
-        session.pop('admin_id', None)
-        session.pop('admin_username', None)
-
-    return jsonify({'success': True, 'message': 'Logged out successfully', 'redirect': url_for('index')})
-
-@app.route('/logout_s', methods=['POST'])
-def logout_s():
-    if 'student_id' in session:
-        student_id = session.get('student_id')
-        student = Student.query.get(student_id)
-
-        if student and student.is_logged_in:
-            # Create attendance record
-            if student.login_time:
-                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
-                attendance = AttendanceRecord(
-                    student_id=student.student_id,
-                    room_code=student.current_room,
-                    login_time=student.login_time,
-                    logout_time=datetime.now(),
-                    active_duration=active_duration
-                )
-                db.session.add(attendance)
-
-            # Reset student login status
-            student.is_logged_in = False
-            student.current_room = None
-            student.login_time = None
-            student.last_active_time = None
-            student.current_bssid = None
-            student.is_active = True  # Reset active status
-            db.session.commit()
-
-        # Clear student session
-        session.pop('student_id', None)
-        session.pop('student_username', None)
-        session.pop('current_room', None)
-
-    elif 'admin_id' in session:
-        admin_id = session.get('admin_id')
-
-        # Close all active rooms created by the admin
-        rooms = Room.query.filter_by(admin_id=admin_id).all()
-        for room in rooms:
-            db.session.delete(room)
-        db.session.commit()
-
-        # Clear admin session
         session.pop('admin_id', None)
         session.pop('admin_username', None)
 
@@ -668,7 +714,7 @@ def active_students():
             status = "Inactive (No Activity)"
             
         students_list.append({
-            'student_id': student.student_id,
+            'roll_number': student.roll_number,
             'username': student.username,
             'status': status,
             'active_time': active_time,
@@ -678,63 +724,38 @@ def active_students():
     return jsonify(students_list)
 
 # Download attendance records
-@app.route('/download_attendance')
-def download_attendance():
+@app.route('/download_attendance/<room_code>')
+def download_attendance(room_code):
     if 'admin_id' not in session:
         flash("Please login first")
         return redirect(url_for('login_admin'))
+    
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+    
+    if not room:
+        flash("Room not found or you don't have permission")
+        return redirect(url_for('admin_dashboard'))
     
     # Create a temporary CSV file
     import tempfile
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
     
     with open(temp_file.name, 'w', newline='') as csvfile:
-        fieldnames = ['student_id', 'room_code', 'login_time', 'logout_time', 'active_duration']
+        fieldnames = ['roll_number', 'username', 'login_time', 'logout_time', 'active_duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
-        records = AttendanceRecord.query.all()
+        # Get attendance records for this room
+        records = AttendanceRecord.query.filter_by(room_code=room_code).all()
         
         for record in records:
+            student = Student.query.filter_by(roll_number=record.roll_number).first()
+            username = student.username if student else "Unknown"
+            
             writer.writerow({
-                'student_id': record.student_id,
-                'room_code': record.room_code,
-                'login_time': record.login_time,
-                'logout_time': record.logout_time,
-                'active_duration': f"{record.active_duration:.2f} minutes"
-            })
-    
-    return send_file(temp_file.name, as_attachment=True, download_name='attendance.csv')
-
-@app.route('/download_student_attendance')
-def download_student_attendance():
-    if 'student_id' not in session:
-        flash("Please login first")
-        return redirect(url_for('login_student'))
-    
-    # Get student's actual ID string from database
-    student_db_id = session.get('student_id')
-    student = Student.query.get(student_db_id)
-    
-    if not student:
-        flash("Student not found")
-        return redirect(url_for('login_student'))
-
-    # Create temporary CSV file
-    import tempfile
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
-    
-    with open(temp_file.name, 'w', newline='') as csvfile:
-        fieldnames = ['room_code', 'login_time', 'logout_time', 'active_duration']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        writer.writeheader()
-        # Filter records by student's actual ID string
-        records = AttendanceRecord.query.filter_by(student_id=student.student_id).all()
-        
-        for record in records:
-            writer.writerow({
-                'room_code': record.room_code,
+                'roll_number': record.roll_number,
+                'username': username,
                 'login_time': record.login_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'logout_time': record.logout_time.strftime('%Y-%m-%d %H:%M:%S') if record.logout_time else 'N/A',
                 'active_duration': f"{record.active_duration:.2f} minutes"
@@ -743,7 +764,7 @@ def download_student_attendance():
     return send_file(
         temp_file.name,
         as_attachment=True,
-        download_name=f'attendance_{student.student_id}.csv'
+        download_name=f'attendance_{room_code}.csv'
     )
 
 if __name__ == '__main__':

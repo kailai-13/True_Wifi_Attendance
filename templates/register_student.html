@@ -8,70 +8,82 @@
 </head>
 <body>
     <h2>Register as Student</h2>
-    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% with messages = get_flashed_messages() %}
         {% if messages %}
-            {% for category, message in messages %}
+            {% for message in messages %}
                 <p style="color: red;">{{ message }}</p>
             {% endfor %}
         {% endif %}
     {% endwith %}
 
     <form method="POST" id="registration-form">
-        <label>Student ID:</label>
-        <input type="text" name="student_id" required><br><br>
+        <label>Roll Number:</label>
+        <input type="text" name="roll_number" id="roll_number" required><br><br>
+        
+        <label>Room Code:</label>
+        <select name="room_code" id="room_code" required>
+            <option value="">Select a room</option>
+            {% for room in active_rooms %}
+                <option value="{{ room.room_code }}">{{ room.room_code }}</option>
+            {% endfor %}
+        </select><br><br>
+        
         <label>Username:</label>
-        <input type="text" name="username" required><br><br>
+        <input type="text" name="username" id="username" required><br><br>
+        
         <label>Password:</label>
         <input type="password" name="password" required><br><br>
-        <input type="hidden" name="face_image" id="face-image">
+        
+        <div id="eligibility-status"></div>
 
-        <div id="camera-container">
-            <h3>Face Registration</h3>
-            <video id="video" width="320" height="240" autoplay></video>
-            <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
-            <div>
-                <button type="button" id="capture-btn">Capture Face</button>
-                <p id="capture-status">Please capture your face</p>
-            </div>
-        </div>
-
-        <button type="submit" id="register-btn" disabled>Register</button>
+        <button type="submit" id="register-btn">Register</button>
     </form>
 
-    <p>Already a student? <a href="{{ url_for('login_student') }}">Login here</a></p>
+    <p>Already registered? <a href="{{ url_for('login_student') }}">Login here</a></p>
 
     <script>
-        // Access webcam
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const captureBtn = document.getElementById('capture-btn');
-        const registerBtn = document.getElementById('register-btn');
-        const captureStatus = document.getElementById('capture-status');
-        const faceImage = document.getElementById('face-image');
-
-        // Get access to the webcam
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error('Error accessing camera:', err);
-                captureStatus.textContent = 'Error: Cannot access camera';
-                captureStatus.style.color = 'red';
-            });
-
-        // Capture image from webcam
-        captureBtn.addEventListener('click', () => {
-            const context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg');
-
-            // Store image data in hidden form field
-            faceImage.value = imageData;
-
-            captureStatus.textContent = 'Face captured! You can now register.';
-            captureStatus.style.color = 'green';
-            registerBtn.disabled = false;
+        document.addEventListener('DOMContentLoaded', function() {
+            const rollNumberInput = document.getElementById('roll_number');
+            const roomCodeSelect = document.getElementById('room_code');
+            const usernameInput = document.getElementById('username');
+            const registerBtn = document.getElementById('register-btn');
+            const eligibilityStatus = document.getElementById('eligibility-status');
+            
+            function checkEligibility() {
+                const rollNumber = rollNumberInput.value;
+                const roomCode = roomCodeSelect.value;
+                
+                if (rollNumber && roomCode) {
+                    const formData = new FormData();
+                    formData.append('roll_number', rollNumber);
+                    formData.append('room_code', roomCode);
+                    
+                    fetch('/check_eligibility', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        eligibilityStatus.textContent = data.message;
+                        eligibilityStatus.style.color = data.eligible ? 'green' : 'red';
+                        
+                        if (data.eligible && data.username) {
+                            // Auto-fill the username from the room member list
+                            usernameInput.value = data.username;
+                            // Make username field read-only since it's predefined by admin
+                            usernameInput.readOnly = true;
+                        } else {
+                            usernameInput.readOnly = false;
+                        }
+                        
+                        // Enable or disable the register button based on eligibility
+                        registerBtn.disabled = !data.eligible;
+                    });
+                }
+            }
+            
+            rollNumberInput.addEventListener('blur', checkEligibility);
+            roomCodeSelect.addEventListener('change', checkEligibility);
         });
     </script>
 </body>
