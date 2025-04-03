@@ -287,7 +287,6 @@ def add_room_members(room_code):
     return render_template('add_room_members.html', 
                            room=room, 
                            members=members)
-# Modified to get all room members for admin dashboard
 @app.route('/room_members/<room_code>')
 def get_room_members(room_code):
     if 'admin_id' not in session:
@@ -300,7 +299,7 @@ def get_room_members(room_code):
         return jsonify({'success': False, 'message': 'Room not found or you don\'t have permission'})
     
     # Get all members for this room
-    members = RoomMember.query.filter_by(room_code=room_code).all()
+    members = RoomMember.query.filter_by(room_code=room_code).order_by(RoomMember.roll_number).all()
     
     # Build member list with status
     member_list = []
@@ -849,41 +848,70 @@ def download_attendance(room_code):
         flash("Room not found or you don't have permission")
         return redirect(url_for('admin_dashboard'))
     
+    # Get all members for this room, ordered by roll number
+    members = RoomMember.query.filter_by(room_code=room_code).order_by(RoomMember.roll_number).all()
+    
     # Create a temporary CSV file
     import tempfile
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
     
     with open(temp_file.name, 'w', newline='') as csvfile:
-        fieldnames = ['roll_number', 'username', 'login_time', 'current_status', 'active_duration']
+        fieldnames = [
+            'roll_number', 
+            'username', 
+            'status', 
+            'is_registered', 
+            'active_status', 
+            'login_time', 
+            'active_duration'
+        ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
         
-        # Get only currently active students in this room
-        active_students = Student.query.filter_by(
-            current_room=room_code, 
-            is_logged_in=True
-        ).all()
-        
-        for student in active_students:
-            # Calculate active duration for currently logged in students
-            active_duration = 0
-            if student.login_time:
-                active_duration = (datetime.now() - student.login_time).total_seconds() / 60
+        for member in members:
+            # Get student info if available
+            student = Student.query.filter_by(
+                roll_number=member.roll_number,
+                current_room=room_code,
+                is_logged_in=True
+            ).first()
+            
+            login_time = "N/A"
+            active_duration = "N/A"
+            active_status = "N/A"
+            
+            if student and member.status == 'Present':
+                # Calculate active duration
+                if student.login_time:
+                    login_time = student.login_time.strftime('%Y-%m-%d %H:%M:%S')
+                    duration_minutes = (datetime.now() - student.login_time).total_seconds() / 60
+                    active_duration = f"{duration_minutes:.2f} minutes"
+                
+                # Check connection status
+                active_status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
+                
+                # Also check if student is active within last 2 minutes as a backup
+                if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
+                    active_status = "Inactive (No Activity)"
             
             writer.writerow({
-                'roll_number': student.roll_number,
-                'username': student.username,
-                'login_time': student.login_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'current_status': "Active" if student.is_active else "Inactive",
-                'active_duration': f"{active_duration:.2f} minutes"
+                'roll_number': member.roll_number,
+                'username': member.username,
+                'status': member.status,
+                'is_registered': "Yes" if member.is_registered else "No",
+                'active_status': active_status if member.status == 'Present' else "N/A",
+                'login_time': login_time,
+                'active_duration': active_duration
             })
     
     return send_file(
         temp_file.name,
         as_attachment=True,
-        download_name=f'current_attendance_{room_code}.csv'
+        download_name=f'attendance_{room_code}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
     )
+
+
 @app.route('/download_student_attendance')
 def download_student_attendance():
     if 'student_id' not in session:
