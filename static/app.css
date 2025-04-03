@@ -705,7 +705,7 @@ box-shadow: 0 0 10px var(--neon-glow);
 }
 
 .member-card {
-  background-color: white;
+  background-color: var(--card-bg);
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   padding: 15px;
   border-radius: var(--border-radius);
