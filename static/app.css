@@ -732,7 +732,7 @@ box-shadow: 0 0 10px var(--neon-glow);
   border-radius: 3px;
   font-size: 0.8em;
   margin-top: 10px;
-  color: white;
+  color: rgb(0, 0, 0);
 }
 
 .status-present {
@@ -763,7 +763,7 @@ box-shadow: 0 0 10px var(--neon-glow);
   border-radius: 3px;
   border: 1px solid var(--border-color);
   background: var(--card-bg);
-  color: var(--text-color);
+  color: var(--neon-glow);
 }
 
 .student-actions button {
