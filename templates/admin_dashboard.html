@@ -5,7 +5,54 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
-   
+    <style>
+        .room-list li {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        .room-status {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .status-active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .status-closed {
+            background-color: #FF9800;
+            color: white;
+        }
+        
+        .status-inactive {
+            background-color: #F44336;
+            color: white;
+        }
+        
+        .bssid-info {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .wifi-warning {
+            background-color: #FFF3CD;
+            border: 1px solid #FFEEBA;
+            color: #856404;
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -14,21 +61,44 @@
         
         <div class="room-management">
             <h2>Room Management</h2>
+            
+            <div class="wifi-warning">
+                <strong>Important:</strong> When creating or opening a room, your current WiFi information will be stored. 
+                Students can only join a room if they are connected to the same WiFi network as you.
+                <div>Current WiFi BSSID: <span id="current-bssid">Loading...</span></div>
+            </div>
+            
             <div>
                 <input type="text" id="room-code" placeholder="Enter room code">
                 <button onclick="createRoom()">Create New Room</button>
             </div>
             
-            <h3>Active Rooms</h3>
+            <h3>Your Rooms</h3>
             <ul class="room-list" id="room-list">
                 {% for room in rooms %}
                     <li>
-                        <span>{{ room.room_code }} (Created: {{ room.created_at.strftime('%Y-%m-%d %H:%M') }})</span>
+                        <div class="room-header">
+                            <span>{{ room.room_code }}</span>
+                            {% if room.temporarily_closed %}
+                                <span class="room-status status-closed">Temporarily Closed</span>
+                            {% elif room.active %}
+                                <span class="room-status status-active">Active</span>
+                            {% else %}
+                                <span class="room-status status-inactive">Inactive</span>
+                            {% endif %}
+                        </div>
+                        <div><small>Created: {{ room.created_at.strftime('%Y-%m-%d %H:%M') }}</small></div>
+                        <div class="bssid-info">WiFi BSSID: {{ room.bssid }}</div>
                         <div class="room-buttons">
                             <button onclick="selectRoom('{{ room.room_code }}')">View Members</button>
                             <button onclick="manageRoomMembers('{{ room.room_code }}')">Manage Members</button>
                             <button onclick="downloadAttendance('{{ room.room_code }}')">Download Attendance</button>
-                            <button class="danger" onclick="closeRoom('{{ room.room_code }}')">Close Room</button>
+                            {% if room.temporarily_closed %}
+                                <button class="success" onclick="openRoom('{{ room.room_code }}')">Open Room</button>
+                            {% elif room.active %}
+                                <button class="warning" onclick="temporarilyCloseRoom('{{ room.room_code }}')">Temporarily Close</button>
+                            {% endif %}
+                            <button class="danger" onclick="closeRoom('{{ room.room_code }}')">Permanently Close</button>
                         </div>
                     </li>
                 {% endfor %}
@@ -88,34 +158,16 @@
             </div>
         </div>
     </div>
-
+    
     <script>
-        // Global variables
-        let currentRoomCode = '';
-        let memberData = [];
-        
-        // On page load
-        window.onload = function() {
-            checkAuth();
-        };
-        
-        // Timer to refresh data
-        setInterval(function() {
-            if (currentRoomCode) {
-                loadRoomMembers(currentRoomCode);
-            }
-        }, 10000); // Refresh every 10 seconds
-        
-        // Check if admin is authenticated
-        function checkAuth() {
-            // Check if session is valid
-            fetch('/admin_dashboard')
-                .then(response => {
-                    if (!response.ok && response.redirected) {
-                        window.location.href = '/login_admin';
-                    }
-                });
-        }
+        // Display current WiFi BSSID
+        fetch('/update_wifi_status', {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('current-bssid').textContent = data.current_bssid || 'Unknown';
+        });
         
         // Create a new room
         function createRoom() {
@@ -125,47 +177,63 @@
                 return;
             }
             
-            const formData = new FormData();
-            formData.append('room_code', roomCode);
-            
             fetch('/create_room', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `room_code=${encodeURIComponent(roomCode)}`
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     alert(data.message);
-                    window.location.reload();
+                    location.reload();
                 } else {
                     alert(data.message);
                 }
             });
         }
         
-        // Select a room to view members
-        function selectRoom(roomCode) {
-            currentRoomCode = roomCode;
-            document.getElementById('current-room-code').textContent = roomCode;
-            document.getElementById('room-view').style.display = 'block';
-            
-            // Load room members
-            loadRoomMembers(roomCode);
+        // Open a temporarily closed room
+        function openRoom(roomCode) {
+            if (confirm(`Are you sure you want to open room ${roomCode}? Your current WiFi will be used.`)) {
+                fetch(`/open_room/${roomCode}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                });
+            }
         }
         
-        // Manage room members (redirect to member management page)
-        function manageRoomMembers(roomCode) {
-            window.location.href = `/add_room_members/${roomCode}`;
+        // Temporarily close a room
+        function temporarilyCloseRoom(roomCode) {
+            if (confirm(`Are you sure you want to temporarily close room ${roomCode}? All students will be logged out.`)) {
+                fetch(`/temporarily_close_room/${roomCode}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                });
+            }
         }
         
-        // Download attendance record
-        function downloadAttendance(roomCode) {
-            window.location.href = `/download_attendance/${roomCode}`;
-        }
-        
-        // Close a room
+        // Permanently close a room
         function closeRoom(roomCode) {
-            if (confirm(`Are you sure you want to close room ${roomCode}? This action cannot be undone.`)) {
+            if (confirm(`Are you sure you want to permanently close room ${roomCode}? This will delete all member data!`)) {
                 fetch(`/close_room/${roomCode}`, {
                     method: 'POST'
                 })
@@ -173,153 +241,119 @@
                 .then(data => {
                     if (data.success) {
                         alert(data.message);
-                        window.location.reload();
+                        location.reload();
                     } else {
                         alert(data.message);
                     }
                 });
             }
+        }
+        
+        // View room members
+        function selectRoom(roomCode) {
+            document.getElementById('current-room-code').textContent = roomCode;
+            document.getElementById('room-view').style.display = 'block';
+            
+            // Load room members
+            loadRoomMembers(roomCode);
+            
+            // Scroll to room view
+            document.getElementById('room-view').scrollIntoView({
+                behavior: 'smooth'
+            });
+        }
+        
+        // Manage room members
+        function manageRoomMembers(roomCode) {
+            window.location.href = `/add_room_members/${roomCode}`;
+        }
+        
+        // Download attendance for a room
+        function downloadAttendance(roomCode) {
+            window.location.href = `/download_attendance/${roomCode}`;
         }
         
         // Load room members
         function loadRoomMembers(roomCode) {
             fetch(`/room_members/${roomCode}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        memberData = data.members;
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update stats
+                    document.getElementById('total-count').textContent = data.stats.total;
+                    document.getElementById('present-count').textContent = data.stats.present;
+                    document.getElementById('od-count').textContent = data.stats.od;
+                    document.getElementById('excused-count').textContent = data.stats.excused;
+                    
+                    // Clear grids
+                    document.getElementById('all-members-grid').innerHTML = '';
+                    document.getElementById('present-members-grid').innerHTML = '';
+                    document.getElementById('od-members-grid').innerHTML = '';
+                    document.getElementById('excused-members-grid').innerHTML = '';
+                    document.getElementById('not-present-members-grid').innerHTML = '';
+                    
+                    // Fill grids with members
+                    data.members.forEach(member => {
+                        // Create member card
+                        const card = createMemberCard(member, roomCode);
                         
-                        // Update statistics
-                        document.getElementById('total-count').textContent = data.stats.total;
-                        document.getElementById('present-count').textContent = data.stats.present;
-                        document.getElementById('od-count').textContent = data.stats.od;
-                        document.getElementById('excused-count').textContent = data.stats.excused;
+                        // Add to all members
+                        document.getElementById('all-members-grid').appendChild(card.cloneNode(true));
                         
-                        // Clear all grids
-                        document.getElementById('all-members-grid').innerHTML = '';
-                        document.getElementById('present-members-grid').innerHTML = '';
-                        document.getElementById('od-members-grid').innerHTML = '';
-                        document.getElementById('excused-members-grid').innerHTML = '';
-                        document.getElementById('not-present-members-grid').innerHTML = '';
-                        
-                        // Populate member grids
-                        data.members.forEach(member => {
-                            // Add to all members grid
-                            document.getElementById('all-members-grid').appendChild(createMemberCard(member));
-                            
-                            // Add to appropriate status grid
-                            if (member.status === 'Present') {
-                                document.getElementById('present-members-grid').appendChild(createMemberCard(member));
-                            } else if (member.status === 'OD') {
-                                document.getElementById('od-members-grid').appendChild(createMemberCard(member));
-                            } else if (member.status === 'Excused') {
-                                document.getElementById('excused-members-grid').appendChild(createMemberCard(member));
-                            } else { // Not Present
-                                document.getElementById('not-present-members-grid').appendChild(createMemberCard(member));
-                            }
-                        });
-                    } else {
-                        alert(data.message);
-                    }
-                });
+                        // Add to respective status tab
+                        if (member.status === 'Present') {
+                            document.getElementById('present-members-grid').appendChild(card.cloneNode(true));
+                        } else if (member.status === 'OD') {
+                            document.getElementById('od-members-grid').appendChild(card.cloneNode(true));
+                        } else if (member.status === 'Excused') {
+                            document.getElementById('excused-members-grid').appendChild(card.cloneNode(true));
+                        } else {
+                            document.getElementById('not-present-members-grid').appendChild(card.cloneNode(true));
+                        }
+                    });
+                } else {
+                    alert(data.message);
+                }
+            });
         }
         
-        // Create member card for display
-        function createMemberCard(member) {
+        // Create a member card
+        function createMemberCard(member, roomCode) {
             const card = document.createElement('div');
             card.className = 'member-card';
             
-            // Create active indicator if present
-            if (member.status === 'Present') {
-                const activeIndicator = document.createElement('div');
-                activeIndicator.className = `active-indicator ${member.active_status === 'Active' ? 'active-on' : 'active-off'}`;
-                card.appendChild(activeIndicator);
-            }
-            
-            // Add member info
-            const memberInfo = document.createElement('div');
-            memberInfo.className = 'member-info';
-            
-            const nameHeader = document.createElement('h3');
-            nameHeader.textContent = member.username;
-            memberInfo.appendChild(nameHeader);
-            
-            const rollNumber = document.createElement('p');
-            rollNumber.textContent = `Roll Number: ${member.roll_number}`;
-            memberInfo.appendChild(rollNumber);
-            
-            if (member.status === 'Present' && member.active_status !== 'N/A') {
-                const activeStatus = document.createElement('p');
-                activeStatus.textContent = `Status: ${member.active_status}`;
-                memberInfo.appendChild(activeStatus);
-                
-                const activeTime = document.createElement('p');
-                activeTime.textContent = `Active Time: ${member.active_time}`;
-                memberInfo.appendChild(activeTime);
-            }
-            
-            card.appendChild(memberInfo);
-            
-            // Add status label
-            const statusLabel = document.createElement('div');
-            statusLabel.className = `status-label status-${member.status.toLowerCase().replace(' ', '-')}`;
-            statusLabel.textContent = member.status;
-            card.appendChild(statusLabel);
-            
-            // Add actions
-            const actions = document.createElement('div');
-            actions.className = 'student-actions';
-            
-            const statusSelect = document.createElement('select');
-            
-            const notPresentOption = document.createElement('option');
-            notPresentOption.value = 'Not Present';
-            notPresentOption.textContent = 'Not Present';
-            notPresentOption.selected = member.status === 'Not Present';
-            statusSelect.appendChild(notPresentOption);
-            
-            const presentOption = document.createElement('option');
-            presentOption.value = 'Present';
-            presentOption.textContent = 'Present';
-            presentOption.selected = member.status === 'Present';
-            statusSelect.appendChild(presentOption);
-            
-            const odOption = document.createElement('option');
-            odOption.value = 'OD';
-            odOption.textContent = 'On Duty';
-            odOption.selected = member.status === 'OD';
-            statusSelect.appendChild(odOption);
-            
-            const excusedOption = document.createElement('option');
-            excusedOption.value = 'Excused';
-            excusedOption.textContent = 'Excused';
-            excusedOption.selected = member.status === 'Excused';
-            statusSelect.appendChild(excusedOption);
-            
-            actions.appendChild(statusSelect);
-            
-            const updateButton = document.createElement('button');
-            updateButton.textContent = 'Update Status';
-            updateButton.onclick = function() {
-                updateStudentStatus(member.roll_number, currentRoomCode, statusSelect.value);
-            };
-            actions.appendChild(updateButton);
-            
-            card.appendChild(actions);
+            card.innerHTML = `
+                <div class="member-info">
+                    <div class="member-name">${member.username}</div>
+                    <div class="member-roll">${member.roll_number}</div>
+                    <div class="member-status">Status: ${member.status}</div>
+                    ${member.status === 'Present' ? `<div class="member-active">Connection: ${member.active_status}</div>` : ''}
+                    ${member.status === 'Present' ? `<div class="member-time">Active Time: ${member.active_time}</div>` : ''}
+                </div>
+                <div class="member-actions">
+                    <select id="status-${member.roll_number}" class="status-select">
+                        <option value="Not Present" ${member.status === 'Not Present' ? 'selected' : ''}>Not Present</option>
+                        <option value="Present" ${member.status === 'Present' ? 'selected' : ''}>Present</option>
+                        <option value="OD" ${member.status === 'OD' ? 'selected' : ''}>On Duty</option>
+                        <option value="Excused" ${member.status === 'Excused' ? 'selected' : ''}>Excused</option>
+                    </select>
+                    <button onclick="updateStatus('${member.roll_number}', '${roomCode}')">Update</button>
+                </div>
+            `;
             
             return card;
         }
         
         // Update student status
-        function updateStudentStatus(rollNumber, roomCode, status) {
-            const formData = new FormData();
-            formData.append('roll_number', rollNumber);
-            formData.append('room_code', roomCode);
-            formData.append('status', status);
+        function updateStatus(rollNumber, roomCode) {
+            const status = document.getElementById(`status-${rollNumber}`).value;
             
             fetch('/update_student_status', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `roll_number=${encodeURIComponent(rollNumber)}&room_code=${encodeURIComponent(roomCode)}&status=${encodeURIComponent(status)}`
             })
             .then(response => response.json())
             .then(data => {
@@ -334,37 +368,45 @@
         
         // Show tab content
         function showTab(tabId) {
-            // Hide all tab content
-            const tabContents = document.querySelectorAll('.tab-content');
-            tabContents.forEach(tab => {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
             });
             
-            // Remove active class from all buttons
-            const tabButtons = document.querySelectorAll('.tab-button');
-            tabButtons.forEach(button => {
+            // Deactivate all buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
                 button.classList.remove('active');
             });
             
-            // Show selected tab content
+            // Show selected tab
             document.getElementById(tabId).classList.add('active');
             
-            // Add active class to selected button
+            // Activate button
             event.target.classList.add('active');
         }
         
         // Logout function
         function logout() {
-            fetch('/logout', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = data.redirect;
-                }
-            });
+            if (confirm('Are you sure you want to logout?')) {
+                fetch('/logout', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.href = data.redirect;
+                    }
+                });
+            }
         }
+        
+        // Auto-refresh room members every 30 seconds
+        setInterval(() => {
+            const roomCode = document.getElementById('current-room-code').textContent;
+            if (roomCode && document.getElementById('room-view').style.display !== 'none') {
+                loadRoomMembers(roomCode);
+            }
+        }, 30000);
     </script>
 </body>
 </html>

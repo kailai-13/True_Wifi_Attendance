@@ -44,7 +44,6 @@ class Admin(db.Model):
     session_active = db.Column(db.Boolean, default=False)
     current_bssid = db.Column(db.String(100))  # Store admin's current BSSID
 
-# Room Table (Stored in room_db)
 class Room(db.Model):
     __bind_key__ = 'room_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -52,8 +51,8 @@ class Room(db.Model):
     admin_id = db.Column(db.Integer, nullable=False)  # ID of admin who created the room
     created_at = db.Column(db.DateTime, default=datetime.now)
     active = db.Column(db.Boolean, default=True)
+    temporarily_closed = db.Column(db.Boolean, default=False)  # New field for temporary closing
     bssid = db.Column(db.String(100))  # Store the BSSID when room was created
-
 # Add these new fields to the RoomMember model
 class RoomMember(db.Model):
     __bind_key__ = 'room_db'
@@ -197,7 +196,7 @@ def login_admin():
             
     return render_template('login_admin.html')
 
-# Admin dashboard
+# Modified Room model with 'temporarily_closed' field
 @app.route('/admin_dashboard')
 def admin_dashboard():
     if 'admin_id' not in session:
@@ -221,24 +220,114 @@ def create_room():
     # Check if room code already exists
     existing_room = Room.query.filter_by(room_code=room_code).first()
     if existing_room:
-        return jsonify({'success': False, 'message': 'Room code already exists'})
+        # If room exists but belongs to this admin, just reactivate it
+        admin_id = session.get('admin_id')
+        if existing_room.admin_id == admin_id:
+            # Get admin's current BSSID
+            admin = Admin.query.get(admin_id)
+            current_bssid = get_wifi_bssid()
+            admin.current_bssid = current_bssid
+            
+            # Update room with current BSSID and set active
+            existing_room.bssid = current_bssid
+            existing_room.active = True
+            existing_room.temporarily_closed = False
+            db.session.commit()
+            return jsonify({'success': True, 'message': f'Room {room_code} reopened successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Room code already exists'})
     
     # Get admin's current BSSID
     admin_id = session.get('admin_id')
     admin = Admin.query.get(admin_id)
+    current_bssid = get_wifi_bssid()
+    admin.current_bssid = current_bssid
     
     # Create new room
     new_room = Room(
         room_code=room_code,
         admin_id=admin_id,
-        bssid=admin.current_bssid,
-        active=True
+        bssid=current_bssid,
+        active=True,
+        temporarily_closed=False
     )
     
     db.session.add(new_room)
     db.session.commit()
     
     return jsonify({'success': True, 'message': f'Room {room_code} created successfully'})
+
+# Temporarily close a room
+@app.route('/temporarily_close_room/<room_code>', methods=['POST'])
+def temporarily_close_room(room_code):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found'})
+
+    # Log out all students in the room
+    students_in_room = Student.query.filter_by(current_room=room_code, is_logged_in=True).all()
+    for student in students_in_room:
+        if student.login_time:
+            active_duration = (datetime.now() - student.login_time).total_seconds() / 60
+            attendance = AttendanceRecord(
+                roll_number=student.roll_number,
+                room_code=room_code,
+                login_time=student.login_time,
+                logout_time=datetime.utcnow(),
+                active_duration=active_duration
+            )
+            db.session.add(attendance)
+
+        # Reset student login status
+        student.is_logged_in = False
+        student.current_room = None
+        student.login_time = None
+        student.last_active_time = None
+        student.current_bssid = None
+        student.is_active = True  # Reset active status
+
+    # Mark all room members as not present
+    room_members = RoomMember.query.filter_by(room_code=room_code).all()
+    for member in room_members:
+        member.status = 'Not Present'
+    
+    # Mark room as temporarily closed
+    room.temporarily_closed = True
+    room.active = False
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': f'Room {room_code} temporarily closed'})
+
+# Open a temporarily closed room
+@app.route('/open_room/<room_code>', methods=['POST'])
+def open_room(room_code):
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+
+    admin_id = session.get('admin_id')
+    room = Room.query.filter_by(room_code=room_code, admin_id=admin_id).first()
+
+    if not room:
+        return jsonify({'success': False, 'message': 'Room not found'})
+    
+    # Get admin's current BSSID
+    current_bssid = get_wifi_bssid()
+    admin = Admin.query.get(admin_id)
+    admin.current_bssid = current_bssid
+    
+    # Update room status and BSSID
+    room.temporarily_closed = False
+    room.active = True
+    room.bssid = current_bssid
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': f'Room {room_code} opened successfully'})
+
 
 # Add room members
 @app.route('/add_room_members/<room_code>', methods=['GET', 'POST'])
@@ -476,6 +565,7 @@ def update_student_status():
     db.session.commit()
     return jsonify({'success': True, 'message': f'Student marked as {status}'})
 
+# Permanently close/delete a room
 @app.route('/close_room/<room_code>', methods=['POST'])
 def close_room(room_code):
     if 'admin_id' not in session:
@@ -516,8 +606,7 @@ def close_room(room_code):
     db.session.delete(room)
     db.session.commit()
 
-    return jsonify({'success': True, 'message': f'Room {room_code} closed successfully'})
-
+    return jsonify({'success': True, 'message': f'Room {room_code} permanently closed'})
 # FIXED: Student registration - Fixed to properly check existence
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
@@ -618,7 +707,7 @@ def check_eligibility():
         'message': 'You are eligible to register'
     })
 
-# Update to room login to update member status
+# Modified login_student route to check for temporarily_closed rooms
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
@@ -647,10 +736,10 @@ def login_student():
             flash("You are not registered for this room")
             return redirect(url_for('login_student'))
         
-        # Verify room code exists and is active
-        room = Room.query.filter_by(room_code=room_code, active=True).first()
+        # Verify room code exists and is active (not temporarily closed)
+        room = Room.query.filter_by(room_code=room_code, active=True, temporarily_closed=False).first()
         if not room:
-            flash("Invalid or inactive room code")
+            flash("Room is inactive or temporarily closed")
             return redirect(url_for('login_student'))
         
         # Verify BSSID matches the room's BSSID
@@ -678,10 +767,9 @@ def login_student():
         
         return redirect(url_for('student_dashboard'))
         
-    # Get list of active rooms for dropdown
-    active_rooms = Room.query.filter_by(active=True).all()
+    # Get list of active rooms for dropdown (only not temporarily closed)
+    active_rooms = Room.query.filter_by(active=True, temporarily_closed=False).all()
     return render_template('login_student.html', active_rooms=active_rooms)
-
 # Student dashboard
 @app.route('/student_dashboard')
 def student_dashboard():
@@ -965,6 +1053,33 @@ def download_student_attendance():
         as_attachment=True,
         download_name=f'attendance_history_{student.roll_number}.csv'
     )
+
+
+# Endpoint to get all rooms (active, temporarily closed, permanent) for the current admin
+@app.route('/get_admin_rooms')
+def get_admin_rooms():
+    if 'admin_id' not in session:
+        return jsonify({'success': False, 'message': 'Admin not logged in'})
+    
+    admin_id = session.get('admin_id')
+    rooms = Room.query.filter_by(admin_id=admin_id).all()
+    
+    room_list = []
+    for room in rooms:
+        status = "Active"
+        if room.temporarily_closed:
+            status = "Temporarily Closed"
+        elif not room.active:
+            status = "Inactive"
+            
+        room_list.append({
+            'room_code': room.room_code,
+            'created_at': room.created_at.strftime('%Y-%m-%d %H:%M'),
+            'status': status,
+            'bssid': room.bssid
+        })
+    
+    return jsonify({'success': True, 'rooms': room_list})
     
 if __name__ == '__main__':
     app.run(host="0.0.0.0",port=5000 ,ssl_context=("cert.pem", "key.pem"),debug=True)
