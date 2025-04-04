@@ -675,6 +675,112 @@
             loadRoomMembers(activeRoomCode);
         }
     }, 1000);
+        // Modified syncMemberCards function
+        function syncMemberCards(newMembers, roomCode) {
+            const newMemberMap = new Map(newMembers.map(m => [m.roll_number, m]));
+            const containers = {
+                all: document.getElementById('all-members-grid'),
+                present: document.getElementById('present-members-grid'),
+                od: document.getElementById('od-members-grid'),
+                excused: document.getElementById('excused-members-grid'),
+                notPresent: document.getElementById('not-present-members-grid')
+            };
+    
+            // Clear all status-specific grids while preserving cards
+            Object.values(containers).forEach(container => {
+                if (container !== containers.all) {
+                    container.innerHTML = '';
+                }
+            });
+    
+            // Update or create cards
+            newMembers.forEach(member => {
+                let card = document.getElementById(`card-${member.roll_number}`);
+                
+                if (card) {
+                    updateExistingCard(card, member);
+                } else {
+                    card = createMemberCard(member, roomCode);
+                    containers.all.appendChild(card);
+                }
+    
+                // Add to appropriate status container
+                const statusContainer = getStatusContainer(member.status, containers);
+                if (statusContainer) {
+                    const statusCard = card.cloneNode(true);
+                    preserveSelectState(statusCard, member.roll_number);
+                    statusContainer.appendChild(statusCard);
+                }
+            });
+    
+            // Remove deleted members from all containers
+            currentRoomMembers.forEach((_, rollNumber) => {
+                if (!newMemberMap.has(rollNumber)) {
+                    document.querySelectorAll(`#card-${rollNumber}`).forEach(card => card.remove());
+                }
+            });
+    
+            currentRoomMembers = newMemberMap;
+        }
+    
+        // New helper functions
+        function getStatusContainer(status, containers) {
+            switch(status) {
+                case 'Present': return containers.present;
+                case 'OD': return containers.od;
+                case 'Excused': return containers.excused;
+                case 'Not Present': return containers.notPresent;
+                default: return null;
+            }
+        }
+    
+        function preserveSelectState(clonedCard, rollNumber) {
+            const originalSelect = document.getElementById(`status-${rollNumber}`);
+            if (!originalSelect) return;
+    
+            const clonedSelect = clonedCard.querySelector(`#status-${rollNumber}`);
+            if (clonedSelect) {
+                clonedSelect.value = originalSelect.value;
+                clonedSelect.dataset.originalValue = originalSelect.dataset.originalValue;
+            }
+        }
+    
+        // Modified updateExistingCard function
+        function updateExistingCard(card, member) {
+            // Update all instances of this card
+            document.querySelectorAll(`#card-${member.roll_number}`).forEach(instance => {
+                // Preserve select state
+                const select = instance.querySelector('.status-select');
+                const currentSelection = select ? select.value : member.status;
+    
+                // Update displayed content
+                instance.querySelector('.member-status').textContent = `Status: ${member.status}`;
+                
+                // Update connection info
+                const activeDiv = instance.querySelector('.member-active');
+                const timeDiv = instance.querySelector('.member-time');
+                
+                if (member.status === 'Present') {
+                    if (!activeDiv) {
+                        instance.querySelector('.member-info').insertAdjacentHTML('beforeend',
+                            `<div class="member-active">Connection: ${member.active_status}</div>
+                             <div class="member-time">Active Time: ${member.active_time}</div>`);
+                    } else {
+                        activeDiv.textContent = `Connection: ${member.active_status}`;
+                        timeDiv.textContent = `Active Time: ${member.active_time}`;
+                    }
+                } else if (activeDiv) {
+                    activeDiv.remove();
+                    timeDiv.remove();
+                }
+    
+                // Update select element if needed
+                if (select) {
+                    select.value = currentSelection;
+                    select.dataset.originalValue = member.status;
+                }
+            });
+        }
 </script>
 </body>
 </html>
