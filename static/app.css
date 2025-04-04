@@ -809,3 +809,50 @@ box-shadow: 0 0 10px var(--neon-glow);
   background-color: var(--danger);
   color: white;
 }
+
+.room-list li {
+  margin-bottom: 15px;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--card-bg);
+}
+
+.room-status {
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  margin-left: 10px;
+}
+
+.status-active {
+  background-color: var(--primary-color);
+  color: var(--text-color);
+}
+
+.status-closed {
+  background-color: var(--accent-color);
+  color: var(--text-color);
+}
+
+.status-inactive {
+  background-color: var(--danger);
+  color: var(--text-color);
+}
+
+.bssid-info {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  margin-top: 5px;
+}
+
+.wifi-warning {
+  background-color: var(--warning);
+  border: 1px solid var(--warning-border);
+  color: var(--warning-text);
+  padding: 8px;
+  margin: 10px 0;
+  border-radius: var(--border-radius);
+  font-size: 0.9rem;
+}

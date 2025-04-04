@@ -5,54 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
-    <style>
-        .room-list li {
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-        
-        .room-status {
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-        
-        .status-active {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .status-closed {
-            background-color: #FF9800;
-            color: white;
-        }
-        
-        .status-inactive {
-            background-color: #F44336;
-            color: white;
-        }
-        
-        .bssid-info {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 5px;
-        }
-        
-        .wifi-warning {
-            background-color: #FFF3CD;
-            border: 1px solid #FFEEBA;
-            color: #856404;
-            padding: 8px;
-            margin: 10px 0;
-            border-radius: 4px;
-            font-size: 0.9rem;
-        }
-    </style>
+  
 </head>
 <body>
     <div class="container">
