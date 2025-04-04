@@ -108,28 +108,29 @@
     </div>
     
     <script>
+        // Room member state management
+        let currentRoomMembers = new Map();
+        let currentRoomStats = {};
+        let activeRoomCode = null;
+    
         // Display current WiFi BSSID
-        fetch('/update_wifi_status', {
-            method: 'POST'
-        })
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('current-bssid').textContent = data.current_bssid || 'Unknown';
-        });
-        
-        // Create a new room
+        fetch('/update_wifi_status', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('current-bssid').textContent = data.current_bssid || 'Unknown';
+            });
+    
+        // Room creation
         function createRoom() {
             const roomCode = document.getElementById('room-code').value;
             if (!roomCode) {
                 alert('Please enter a room code');
                 return;
             }
-            
+    
             fetch('/create_room', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `room_code=${encodeURIComponent(roomCode)}`
             })
             .then(response => response.json())
@@ -142,141 +143,73 @@
                 }
             });
         }
-        
-        // Open a temporarily closed room
+    
+        // Room status management
         function openRoom(roomCode) {
             if (confirm(`Are you sure you want to open room ${roomCode}? Your current WiFi will be used.`)) {
-                fetch(`/open_room/${roomCode}`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        location.reload();
-                    } else {
-                        alert(data.message);
-                    }
-                });
+                fetch(`/open_room/${roomCode}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => handleRoomActionResponse(data));
             }
         }
-        
-        // Temporarily close a room
+    
         function temporarilyCloseRoom(roomCode) {
             if (confirm(`Are you sure you want to temporarily close room ${roomCode}? All students will be logged out.`)) {
-                fetch(`/temporarily_close_room/${roomCode}`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        location.reload();
-                    } else {
-                        alert(data.message);
-                    }
-                });
+                fetch(`/temporarily_close_room/${roomCode}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => handleRoomActionResponse(data));
             }
         }
-        
-        // Permanently close a room
+    
         function closeRoom(roomCode) {
             if (confirm(`Are you sure you want to permanently close room ${roomCode}? This will delete all member data!`)) {
-                fetch(`/close_room/${roomCode}`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message);
-                        location.reload();
-                    } else {
-                        alert(data.message);
-                    }
-                });
+                fetch(`/close_room/${roomCode}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => handleRoomActionResponse(data));
             }
         }
-        
-        // View room members
+    
+        function handleRoomActionResponse(data) {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(data.message);
+            }
+        }
+    
+        // Room selection
         function selectRoom(roomCode) {
+            activeRoomCode = roomCode;
             document.getElementById('current-room-code').textContent = roomCode;
             document.getElementById('room-view').style.display = 'block';
-            
-            // Load room members
             loadRoomMembers(roomCode);
-            
-            // Scroll to room view
-            document.getElementById('room-view').scrollIntoView({
-                behavior: 'smooth'
-            });
+            document.getElementById('room-view').scrollIntoView({ behavior: 'smooth' });
         }
-        
-        // Manage room members
+    
         function manageRoomMembers(roomCode) {
             window.location.href = `/add_room_members/${roomCode}`;
         }
-        
-        // Download attendance for a room
+    
         function downloadAttendance(roomCode) {
             window.location.href = `/download_attendance/${roomCode}`;
         }
-        
-        // Load room members
-        function loadRoomMembers(roomCode) {
-            fetch(`/room_members/${roomCode}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update stats
-                    document.getElementById('total-count').textContent = data.stats.total;
-                    document.getElementById('present-count').textContent = data.stats.present;
-                    document.getElementById('od-count').textContent = data.stats.od;
-                    document.getElementById('excused-count').textContent = data.stats.excused;
-                    
-                    // Clear grids
-                    document.getElementById('all-members-grid').innerHTML = '';
-                    document.getElementById('present-members-grid').innerHTML = '';
-                    document.getElementById('od-members-grid').innerHTML = '';
-                    document.getElementById('excused-members-grid').innerHTML = '';
-                    document.getElementById('not-present-members-grid').innerHTML = '';
-                    
-                    // Fill grids with members
-                    data.members.forEach(member => {
-                        // Create member card
-                        const card = createMemberCard(member, roomCode);
-                        
-                        // Add to all members
-                        document.getElementById('all-members-grid').appendChild(card.cloneNode(true));
-                        
-                        // Add to respective status tab
-                        if (member.status === 'Present') {
-                            document.getElementById('present-members-grid').appendChild(card.cloneNode(true));
-                        } else if (member.status === 'OD') {
-                            document.getElementById('od-members-grid').appendChild(card.cloneNode(true));
-                        } else if (member.status === 'Excused') {
-                            document.getElementById('excused-members-grid').appendChild(card.cloneNode(true));
-                        } else {
-                            document.getElementById('not-present-members-grid').appendChild(card.cloneNode(true));
-                        }
-                    });
-                } else {
-                    alert(data.message);
-                }
-            });
-        }
-        
-        // Create a member card
+    
+        // Member card management
         function createMemberCard(member, roomCode) {
             const card = document.createElement('div');
             card.className = 'member-card';
+            card.id = `card-${member.roll_number}`;
             
             card.innerHTML = `
                 <div class="member-info">
                     <div class="member-name">${member.username}</div>
                     <div class="member-roll">${member.roll_number}</div>
-                    <div class="member-status">Status: ${member.status}</div>
-                    ${member.status === 'Present' ? `<div class="member-active">Connection: ${member.active_status}</div>` : ''}
-                    ${member.status === 'Present' ? `<div class="member-time">Active Time: ${member.active_time}</div>` : ''}
+                    <div class="member-status" id="status-display-${member.roll_number}">Status: ${member.status}</div>
+                    ${member.status === 'Present' ? `
+                        <div class="member-active" id="active-${member.roll_number}">Connection: ${member.active_status}</div>
+                        <div class="member-time" id="time-${member.roll_number}">Active Time: ${member.active_time}</div>
+                    ` : ''}
                 </div>
                 <div class="member-actions">
                     <select id="status-${member.roll_number}" class="status-select">
@@ -285,76 +218,463 @@
                         <option value="OD" ${member.status === 'OD' ? 'selected' : ''}>On Duty</option>
                         <option value="Excused" ${member.status === 'Excused' ? 'selected' : ''}>Excused</option>
                     </select>
-                    <button onclick="updateStatus('${member.roll_number}', '${roomCode}')">Update</button>
+                    <button type="button" onclick="updateStatus('${member.roll_number}', '${roomCode}')">Update</button>
                 </div>
             `;
-            
             return card;
         }
-        
-        // Update student status
-        function updateStatus(rollNumber, roomCode) {
-            const status = document.getElementById(`status-${rollNumber}`).value;
-            
-            fetch('/update_student_status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `roll_number=${encodeURIComponent(rollNumber)}&room_code=${encodeURIComponent(roomCode)}&status=${encodeURIComponent(status)}`
-            })
-            .then(response => response.json())
-            .then(data => {
+    
+        // Status update handling
+        async function updateStatus(rollNumber, roomCode) {
+            const selectElement = document.getElementById(`status-${rollNumber}`);
+            const newStatus = selectElement.value;
+            const originalStatus = selectElement.dataset.originalValue;
+    
+            try {
+                const response = await fetch('/update_student_status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `roll_number=${encodeURIComponent(rollNumber)}&room_code=${encodeURIComponent(roomCode)}&status=${encodeURIComponent(newStatus)}`
+                });
+                
+                const data = await response.json();
                 if (data.success) {
-                    // Reload room members
-                    loadRoomMembers(roomCode);
+                    // Update local state
+                    const member = currentRoomMembers.get(rollNumber);
+                    if (member) {
+                        member.status = newStatus;
+                        updateMemberCard(member, roomCode);
+                    }
+                    updateStats(data.stats);
+                    selectElement.dataset.originalValue = newStatus;
+                }
+            } catch (error) {
+                console.error('Update failed:', error);
+                selectElement.value = originalStatus;
+            }
+        }
+    
+        // Optimized member loading
+        async function loadRoomMembers(roomCode) {
+            try {
+                const response = await fetch(`/room_members/${roomCode}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStats(data.stats);
+                    syncMemberCards(data.members, roomCode);
+                    currentRoomStats = data.stats;
+                }
+            } catch (error) {
+                console.error('Refresh failed:', error);
+            }
+        }
+    
+        function updateStats(stats) {
+            document.getElementById('total-count').textContent = stats.total;
+            document.getElementById('present-count').textContent = stats.present;
+            document.getElementById('od-count').textContent = stats.od;
+            document.getElementById('excused-count').textContent = stats.excused;
+        }
+    
+        function syncMemberCards(newMembers, roomCode) {
+            const newMemberMap = new Map(newMembers.map(m => [m.roll_number, m]));
+            const containers = {
+                all: document.getElementById('all-members-grid'),
+                present: document.getElementById('present-members-grid'),
+                od: document.getElementById('od-members-grid'),
+                excused: document.getElementById('excused-members-grid'),
+                notPresent: document.getElementById('not-present-members-grid')
+            };
+    
+            // Update existing or create new cards
+            newMembers.forEach(member => {
+                let card = document.getElementById(`card-${member.roll_number}`);
+                
+                if (card) {
+                    updateExistingCard(card, member);
                 } else {
-                    alert(data.message);
+                    card = createMemberCard(member, roomCode);
+                    addToContainers(card, member.status, containers);
+                }
+                
+                // Store original select value
+                const select = card.querySelector('.status-select');
+                if (select) {
+                    select.dataset.originalValue = member.status;
                 }
             });
+    
+            // Remove deleted members
+            currentRoomMembers.forEach((_, rollNumber) => {
+                if (!newMemberMap.has(rollNumber)) {
+                    const card = document.getElementById(`card-${rollNumber}`);
+                    if (card) card.remove();
+                }
+            });
+    
+            currentRoomMembers = newMemberMap;
         }
-        
-        // Show tab content
+    
+        function updateExistingCard(card, member) {
+            // Preserve select state
+            const select = card.querySelector('.status-select');
+            const currentSelection = select ? select.value : member.status;
+    
+            // Update displayed status
+            const statusDisplay = card.querySelector('.member-status');
+            if (statusDisplay) statusDisplay.textContent = `Status: ${member.status}`;
+    
+            // Update connection info
+            const activeDiv = card.querySelector('.member-active');
+            const timeDiv = card.querySelector('.member-time');
+            
+            if (member.status === 'Present') {
+                if (!activeDiv) {
+                    card.querySelector('.member-info').insertAdjacentHTML('beforeend',
+                        `<div class="member-active">Connection: ${member.active_status}</div>
+                         <div class="member-time">Active Time: ${member.active_time}</div>`);
+                } else {
+                    activeDiv.textContent = `Connection: ${member.active_status}`;
+                    timeDiv.textContent = `Active Time: ${member.active_time}`;
+                }
+            } else if (activeDiv) {
+                activeDiv.remove();
+                timeDiv.remove();
+            }
+    
+            // Restore select value
+            if (select) {
+                select.value = currentSelection;
+                select.dataset.originalValue = member.status;
+            }
+        }
+    
+        function addToContainers(card, status, containers) {
+            containers.all.appendChild(card.cloneNode(true));
+            
+            switch(status) {
+                case 'Present':
+                    containers.present.appendChild(card.cloneNode(true));
+                    break;
+                case 'OD':
+                    containers.od.appendChild(card.cloneNode(true));
+                    break;
+                case 'Excused':
+                    containers.excused.appendChild(card.cloneNode(true));
+                    break;
+                default:
+                    containers.notPresent.appendChild(card.cloneNode(true));
+            }
+        }
+    
+        // Tab management
         function showTab(tabId) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            
-            // Deactivate all buttons
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.classList.remove('active');
-            });
-            
-            // Show selected tab
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
-            
-            // Activate button
             event.target.classList.add('active');
         }
-        
+    
         // Logout function
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
-                fetch('/logout', {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.href = data.redirect;
-                    }
-                });
+                fetch('/logout', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => data.success && (window.location.href = data.redirect));
             }
         }
-        
-        // Auto-refresh room members every 30 seconds
+    
+        // Optimized auto-refresh
         setInterval(() => {
-            const roomCode = document.getElementById('current-room-code').textContent;
-            if (roomCode && document.getElementById('room-view').style.display !== 'none') {
-                loadRoomMembers(roomCode);
+            if (activeRoomCode && document.getElementById('room-view').style.display !== 'none') {
+                loadRoomMembers(activeRoomCode);
             }
         }, 1000);
-    </script>
+    </script><script>
+    // Room member state management
+    let currentRoomMembers = new Map();
+    let currentRoomStats = {};
+    let activeRoomCode = null;
+
+    // Display current WiFi BSSID
+    fetch('/update_wifi_status', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('current-bssid').textContent = data.current_bssid || 'Unknown';
+        });
+
+    // Room creation
+    function createRoom() {
+        const roomCode = document.getElementById('room-code').value;
+        if (!roomCode) {
+            alert('Please enter a room code');
+            return;
+        }
+
+        fetch('/create_room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `room_code=${encodeURIComponent(roomCode)}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(data.message);
+            }
+        });
+    }
+
+    // Room status management
+    function openRoom(roomCode) {
+        if (confirm(`Are you sure you want to open room ${roomCode}? Your current WiFi will be used.`)) {
+            fetch(`/open_room/${roomCode}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => handleRoomActionResponse(data));
+        }
+    }
+
+    function temporarilyCloseRoom(roomCode) {
+        if (confirm(`Are you sure you want to temporarily close room ${roomCode}? All students will be logged out.`)) {
+            fetch(`/temporarily_close_room/${roomCode}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => handleRoomActionResponse(data));
+        }
+    }
+
+    function closeRoom(roomCode) {
+        if (confirm(`Are you sure you want to permanently close room ${roomCode}? This will delete all member data!`)) {
+            fetch(`/close_room/${roomCode}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => handleRoomActionResponse(data));
+        }
+    }
+
+    function handleRoomActionResponse(data) {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert(data.message);
+        }
+    }
+
+    // Room selection
+    function selectRoom(roomCode) {
+        activeRoomCode = roomCode;
+        document.getElementById('current-room-code').textContent = roomCode;
+        document.getElementById('room-view').style.display = 'block';
+        loadRoomMembers(roomCode);
+        document.getElementById('room-view').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function manageRoomMembers(roomCode) {
+        window.location.href = `/add_room_members/${roomCode}`;
+    }
+
+    function downloadAttendance(roomCode) {
+        window.location.href = `/download_attendance/${roomCode}`;
+    }
+
+    // Member card management
+    function createMemberCard(member, roomCode) {
+        const card = document.createElement('div');
+        card.className = 'member-card';
+        card.id = `card-${member.roll_number}`;
+        
+        card.innerHTML = `
+            <div class="member-info">
+                <div class="member-name">${member.username}</div>
+                <div class="member-roll">${member.roll_number}</div>
+                <div class="member-status" id="status-display-${member.roll_number}">Status: ${member.status}</div>
+                ${member.status === 'Present' ? `
+                    <div class="member-active" id="active-${member.roll_number}">Connection: ${member.active_status}</div>
+                    <div class="member-time" id="time-${member.roll_number}">Active Time: ${member.active_time}</div>
+                ` : ''}
+            </div>
+            <div class="member-actions">
+                <select id="status-${member.roll_number}" class="status-select">
+                    <option value="Not Present" ${member.status === 'Not Present' ? 'selected' : ''}>Not Present</option>
+                    <option value="Present" ${member.status === 'Present' ? 'selected' : ''}>Present</option>
+                    <option value="OD" ${member.status === 'OD' ? 'selected' : ''}>On Duty</option>
+                    <option value="Excused" ${member.status === 'Excused' ? 'selected' : ''}>Excused</option>
+                </select>
+                <button type="button" onclick="updateStatus('${member.roll_number}', '${roomCode}')">Update</button>
+            </div>
+        `;
+        return card;
+    }
+
+    // Status update handling
+    async function updateStatus(rollNumber, roomCode) {
+        const selectElement = document.getElementById(`status-${rollNumber}`);
+        const newStatus = selectElement.value;
+        const originalStatus = selectElement.dataset.originalValue;
+
+        try {
+            const response = await fetch('/update_student_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `roll_number=${encodeURIComponent(rollNumber)}&room_code=${encodeURIComponent(roomCode)}&status=${encodeURIComponent(newStatus)}`
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                // Update local state
+                const member = currentRoomMembers.get(rollNumber);
+                if (member) {
+                    member.status = newStatus;
+                    updateMemberCard(member, roomCode);
+                }
+                updateStats(data.stats);
+                selectElement.dataset.originalValue = newStatus;
+            }
+        } catch (error) {
+            console.error('Update failed:', error);
+            selectElement.value = originalStatus;
+        }
+    }
+
+    // Optimized member loading
+    async function loadRoomMembers(roomCode) {
+        try {
+            const response = await fetch(`/room_members/${roomCode}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                updateStats(data.stats);
+                syncMemberCards(data.members, roomCode);
+                currentRoomStats = data.stats;
+            }
+        } catch (error) {
+            console.error('Refresh failed:', error);
+        }
+    }
+
+    function updateStats(stats) {
+        document.getElementById('total-count').textContent = stats.total;
+        document.getElementById('present-count').textContent = stats.present;
+        document.getElementById('od-count').textContent = stats.od;
+        document.getElementById('excused-count').textContent = stats.excused;
+    }
+
+    function syncMemberCards(newMembers, roomCode) {
+        const newMemberMap = new Map(newMembers.map(m => [m.roll_number, m]));
+        const containers = {
+            all: document.getElementById('all-members-grid'),
+            present: document.getElementById('present-members-grid'),
+            od: document.getElementById('od-members-grid'),
+            excused: document.getElementById('excused-members-grid'),
+            notPresent: document.getElementById('not-present-members-grid')
+        };
+
+        // Update existing or create new cards
+        newMembers.forEach(member => {
+            let card = document.getElementById(`card-${member.roll_number}`);
+            
+            if (card) {
+                updateExistingCard(card, member);
+            } else {
+                card = createMemberCard(member, roomCode);
+                addToContainers(card, member.status, containers);
+            }
+            
+            // Store original select value
+            const select = card.querySelector('.status-select');
+            if (select) {
+                select.dataset.originalValue = member.status;
+            }
+        });
+
+        // Remove deleted members
+        currentRoomMembers.forEach((_, rollNumber) => {
+            if (!newMemberMap.has(rollNumber)) {
+                const card = document.getElementById(`card-${rollNumber}`);
+                if (card) card.remove();
+            }
+        });
+
+        currentRoomMembers = newMemberMap;
+    }
+
+    function updateExistingCard(card, member) {
+        // Preserve select state
+        const select = card.querySelector('.status-select');
+        const currentSelection = select ? select.value : member.status;
+
+        // Update displayed status
+        const statusDisplay = card.querySelector('.member-status');
+        if (statusDisplay) statusDisplay.textContent = `Status: ${member.status}`;
+
+        // Update connection info
+        const activeDiv = card.querySelector('.member-active');
+        const timeDiv = card.querySelector('.member-time');
+        
+        if (member.status === 'Present') {
+            if (!activeDiv) {
+                card.querySelector('.member-info').insertAdjacentHTML('beforeend',
+                    `<div class="member-active">Connection: ${member.active_status}</div>
+                     <div class="member-time">Active Time: ${member.active_time}</div>`);
+            } else {
+                activeDiv.textContent = `Connection: ${member.active_status}`;
+                timeDiv.textContent = `Active Time: ${member.active_time}`;
+            }
+        } else if (activeDiv) {
+            activeDiv.remove();
+            timeDiv.remove();
+        }
+
+        // Restore select value
+        if (select) {
+            select.value = currentSelection;
+            select.dataset.originalValue = member.status;
+        }
+    }
+
+    function addToContainers(card, status, containers) {
+        containers.all.appendChild(card.cloneNode(true));
+        
+        switch(status) {
+            case 'Present':
+                containers.present.appendChild(card.cloneNode(true));
+                break;
+            case 'OD':
+                containers.od.appendChild(card.cloneNode(true));
+                break;
+            case 'Excused':
+                containers.excused.appendChild(card.cloneNode(true));
+                break;
+            default:
+                containers.notPresent.appendChild(card.cloneNode(true));
+        }
+    }
+
+    // Tab management
+    function showTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // Logout function
+    function logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            fetch('/logout', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => data.success && (window.location.href = data.redirect));
+        }
+    }
+
+    // Optimized auto-refresh
+    setInterval(() => {
+        if (activeRoomCode && document.getElementById('room-view').style.display !== 'none') {
+            loadRoomMembers(activeRoomCode);
+        }
+    }, 1000);
+</script>
 </body>
 </html>
