@@ -16,7 +16,6 @@
             <h2>Room Management</h2>
             
 
-            
             <div>
                 <input type="text" id="room-code" placeholder="Enter room code">
                 <button onclick="createRoom()">Create New Room</button>
@@ -355,7 +354,7 @@
             if (roomCode && document.getElementById('room-view').style.display !== 'none') {
                 loadRoomMembers(roomCode);
             }
-        }, 30000);
+        }, 1000);
     </script>
 </body>
 </html>
