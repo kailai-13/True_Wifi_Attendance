@@ -91,6 +91,8 @@ STU102,MATH202,2023-10-20 13:00:00,N/A,75.50,Active
 <div align="center">
   <img src="screenshots/admin-dash.png" width="45%" alt="Admin Dashboard">
   <img src="screenshots/student-view.png" width="45%" alt="Student Portal">
+  <img src="screenshots/student-dash.png" width="45%" alt="Student Dashboard">
+  
 </div>
 
 ---
