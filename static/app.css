@@ -1462,3 +1462,36 @@ video, canvas {
   animation: neonPulse 2s infinite;
   box-shadow: none;
 }
+
+.member-status {
+  padding: 0.4rem 0.6rem;
+  border-radius: 5px;
+  font-weight: 600;
+  margin-top: 0.3rem;
+  display: inline-block;
+}
+
+/* Status-specific styles */
+.status-present {
+  background-color: rgba(0, 255, 128, 0.15);
+  color: #00c17b;
+  border: 1px solid #00c17b;
+}
+
+.status-not-present {
+  background-color: rgba(255, 0, 0, 0.1);
+  color: #d11a2a;
+  border: 1px solid #d11a2a;
+}
+
+.status-od {
+  background-color: rgba(0, 123, 255, 0.1);
+  color: #007bff;
+  border: 1px solid #007bff;
+}
+
+.status-excused {
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border: 1px solid #ffc107;
+}

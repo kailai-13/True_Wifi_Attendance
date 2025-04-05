@@ -205,7 +205,10 @@
                 <div class="member-info">
                     <div class="member-name">${member.username}</div>
                     <div class="member-roll">${member.roll_number}</div>
-                    <div class="member-status" id="status-display-${member.roll_number}">Status: ${member.status}</div>
+                    <div class="member-status status-${member.status.replace(/\s+/g, '-').toLowerCase()}" id="status-display-${member.roll_number}">
+                        Status: ${member.status}
+                      </div>
+                      
                     ${member.status === 'Present' ? `
                         <div class="member-active" id="active-${member.roll_number}">Connection: ${member.active_status}</div>
                         <div class="member-time" id="time-${member.roll_number}">Active Time: ${member.active_time}</div>
