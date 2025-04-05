@@ -2,7 +2,7 @@
 **A Modern, WiFi-Based Classroom Attendance Tracker**    
 ---
  
-## **✨ Key Features**  
+## **✨ Key Features**    
 | Feature | Benefit |
 |---------|---------|
 | **🔒 WiFi BSSID Verification** | Ensures physical presence by matching student/admin WiFi |
