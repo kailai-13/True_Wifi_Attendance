@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
         // Function to update the activity status
         function updateActivity() {
@@ -25,13 +26,16 @@
             .then(response => response.json())
             .then(data => {
                 const wifiStatusElement = document.getElementById('wifi-status');
+                const wifiIcon = document.getElementById('wifi-icon');
                 if (data.success) {
                     if (data.is_active) {
                         wifiStatusElement.textContent = "Connected to correct WiFi network";
-                        wifiStatusElement.style.color = "green";
+                        wifiStatusElement.className = "status-chip status-active";
+                        wifiIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12" y2="20"></line></svg>';
                     } else {
-                        wifiStatusElement.textContent = "WARNING: Not connected to the correct WiFi network!";
-                        wifiStatusElement.style.color = "red";
+                        wifiStatusElement.textContent = "Not connected to the correct WiFi network!";
+                        wifiStatusElement.className = "status-chip status-inactive";
+                        wifiIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12" y2="20"></line></svg>';
                     }
                 }
             })
@@ -55,8 +59,24 @@
                 });
         }
         
+        // Function to toggle theme
+        function toggleTheme() {
+            document.documentElement.setAttribute('data-theme', 
+                document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+            
+            const themeToggle = document.getElementById('theme-toggle');
+            if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                themeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
+            } else {
+                themeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+            }
+        }
+        
         // Start sending activity updates and checking WiFi every 10 seconds
         document.addEventListener('DOMContentLoaded', function() {
+            // Set default theme
+            document.documentElement.setAttribute('data-theme', 'dark');
+            
             // Initial checks
             updateActivity();
             checkWiFiStatus();
@@ -70,38 +90,132 @@
             // Add event listeners for user activity
             document.addEventListener('click', updateActivity);
             document.addEventListener('keypress', updateActivity);
+            
+            // Clock update
+            updateClock();
+            setInterval(updateClock, 1000);
+            
+            // Update active status indicator
+            const activeStatus = document.getElementById('active-status');
+            if (activeStatus.getAttribute('data-active') === 'true') {
+                activeStatus.className = "status-chip status-active";
+            } else {
+                activeStatus.className = "status-chip status-inactive";
+            }
         });
+        
+        function updateClock() {
+            const now = new Date();
+            const timeElement = document.getElementById('current-time');
+            const dateElement = document.getElementById('current-date');
+            
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            timeElement.textContent = `${hours}:${minutes}:${seconds}`;
+            
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            dateElement.textContent = now.toLocaleDateString(undefined, options);
+        }
     </script>
 </head>
 <body>
-    <h1>Student Dashboard</h1>
-    <div class="student-info">
-        <h2>Welcome, {{ student.username }}</h2>
-        <p><strong>Roll Number:</strong> {{ student.roll_number }}</p>
-        <p><strong>Current Room:</strong> {{ student.current_room }}</p>
+
+    <div class="container main-container glass-highlight">
+        <h1>Student Dashboard</h1>
         
-        {% if student.login_time %}
-            <p><strong>Login Time:</strong> {{ student.login_time.strftime('%Y-%m-%d %H:%M:%S') }}</p>
-        {% endif %}
+        <div class="time-display">
+            <div id="current-time" class="digital-clock neon-pulse">00:00:00</div>
+            <div id="current-date" class="date-display">Loading date...</div>
+        </div>
         
-        <div class="status-info">
-            <p id="wifi-status">Checking WiFi connection...</p>
-            <p id="active-status">Status: {{ "Active" if student.is_active else "Inactive" }}</p>
+        <div class="stats-panel">
+            <div class="stat-card glass-highlight">
+                <div class="stat-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                </div>
+                <div class="stat-title">Username</div>
+                <div class="count">{{ student.username }}</div>
+            </div>
+            
+            <div class="stat-card glass-highlight">
+                <div class="stat-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                </div>
+                <div class="stat-title">Roll Number</div>
+                <div class="count">{{ student.roll_number }}</div>
+            </div>
+            
+            <div class="stat-card glass-highlight">
+                <div class="stat-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                </div>
+                <div class="stat-title">Current Room</div>
+                <div class="count">{{ student.current_room }}</div>
+            </div>
+            
+            {% if student.login_time %}
+            <div class="stat-card glass-highlight">
+                <div class="stat-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                </div>
+                <div class="stat-title">Login Time</div>
+                <div class="count">{{ student.login_time.strftime('%H:%M:%S') }}</div>
+                <div class="sub-text">{{ student.login_time.strftime('%Y-%m-%d') }}</div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="container status-container">
+            <h2>Status Information</h2>
+            <div class="status-cards">
+                <div class="status-card glass-highlight">
+                    <div id="wifi-icon" class="status-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12" y2="20"></line></svg>
+                    </div>
+                    <div class="status-label">WiFi Status</div>
+                    <div id="wifi-status" class="status-chip">Checking...</div>
+                </div>
+                
+                <div class="status-card glass-highlight">
+                    <div class="status-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    </div>
+                    <div class="status-label">Activity Status</div>
+                    <div id="active-status" data-active="{{ 'true' if student.is_active else 'false' }}" class="status-chip">
+                        {{ "Active" if student.is_active else "Inactive" }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="container notice-container">
+            <div class="notice-header">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <h3>Important Notice</h3>
+            </div>
+            <div class="wifi-warning">
+                <p>Please ensure you stay connected to the same WiFi network for your attendance to be recorded correctly.</p>
+                <p>If you disconnect from the correct network, your attendance may not be counted.</p>
+            </div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="checkWiFiStatus()" class="btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="button-icon"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12" y2="20"></line></svg>
+                Check WiFi Connection
+            </button>
+            <a href="/download_student_attendance" class="btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="button-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download Attendance
+            </a>
+            <button onclick="logout()" class="btn danger">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="button-icon"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                Logout
+            </button>
         </div>
     </div>
-
-    <div class="important-notice">
-        <h3>Important Notice</h3>
-        <p>Please ensure you stay connected to the same WiFi network for your attendance to be recorded correctly.</p>
-        <p>If you disconnect from the correct network, your attendance may not be counted.</p>
-    </div>
-    
-    <button onclick="checkWiFiStatus()">Check WiFi Connection</button>
-    <div class="attendance-download">
-        <a href="/download_student_attendance">
-            <button>Download My Attendance Records</button>
-        </a>
-    </div>
-    <button onclick="logout()">Logout</button>
+ 
 </body>
 </html>

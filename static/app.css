@@ -1262,3 +1262,192 @@ video, canvas {
         grid-template-columns: 1fr;
     }
 }
+
+/* Additional styles for Student Dashboard */
+.main-container {
+  margin-top: 2rem;
+  position: relative;
+  min-height: 60vh;
+}
+
+.time-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.digital-clock {
+  font-size: clamp(2rem, 6vw, 4rem);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 2px;
+  position: relative;
+}
+
+.date-display {
+  font-size: clamp(1rem, 3vw, 1.2rem);
+  opacity: 0.8;
+}
+
+.status-container {
+  margin-top: 2rem;
+  padding: 1.5rem;
+}
+
+.status-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+}
+
+.status-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1 1 200px;
+  min-width: 200px;
+  transition: all 0.3s ease;
+}
+
+.status-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0 30px var(--shadow-color);
+}
+
+.status-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: var(--primary-color);
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 119, 255, 0.1);
+  border-radius: 50%;
+  margin-bottom: 1rem;
+}
+
+.status-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--text-color);
+}
+
+.status-chip {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  background: rgba(0, 119, 255, 0.2);
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgba(0, 242, 255, 0.2);
+  color: var(--text-color);
+}
+
+.status-active {
+  background: rgba(0, 242, 255, 0.2);
+  border-color: rgba(0, 242, 255, 0.4);
+  color: var(--primary-color);
+  box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+}
+
+.status-inactive {
+  background: rgba(255, 45, 85, 0.2);
+  border-color: rgba(255, 45, 85, 0.4);
+  color: var(--danger);
+  box-shadow: 0 0 15px rgba(255, 45, 85, 0.3);
+}
+
+.notice-container {
+  margin-top: 2rem;
+  padding: 1.5rem;
+}
+
+.notice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  color: var(--warning-text);
+}
+
+.notice-header svg {
+  color: var(--warning-text);
+}
+
+.notice-header h3 {
+  margin: 0;
+  text-align: left;
+  color: var(--warning-text);
+}
+
+.button-icon {
+  margin-right: 0.75rem;
+  vertical-align: middle;
+}
+
+/* Grid layout for status panel */
+.stats-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1.75rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-icon {
+  margin-bottom: 1rem;
+  color: var(--primary-color);
+}
+
+.stat-title {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.sub-text {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-top: 0.25rem;
+}
+
+/* Enhanced animation for digital clock */
+@keyframes neonPulse {
+  0% {
+    text-shadow: 0 0 5px rgba(0, 242, 255, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(0, 242, 255, 0.8), 0 0 30px rgba(0, 119, 255, 0.4);
+  }
+  100% {
+    text-shadow: 0 0 5px rgba(0, 242, 255, 0.5);
+  }
+}
+
+.digital-clock.neon-pulse {
+  animation: neonPulse 2s infinite;
+  box-shadow: none;
+}
