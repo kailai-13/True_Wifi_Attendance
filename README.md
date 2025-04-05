@@ -1,6 +1,5 @@
 # **🎯 Smart Attendance System**  
-**A Modern, WiFi-Based Classroom Attendance Tracker**  
-
+**A Modern, WiFi-Based Classroom Attendance Tracker**   
 ---
  
 ## **✨ Key Features**  
