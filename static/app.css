@@ -262,9 +262,10 @@ input:focus, select:focus {
     inset 0 0 10px rgba(0, 242, 255, 0.05);
 }
 
-/* Enhanced glassmorphism buttons */
+/* Enhanced glassmorphism buttons - responsive and well-aligned */
 button, .btn {
-  padding: 0.9rem 1.75rem;
+  padding: 0.75rem 1.5rem;
+
   border-radius: var(--border-radius);
   border: 1px solid rgba(0, 242, 255, 0.2);
   background: var(--button-bg);
@@ -275,17 +276,27 @@ button, .btn {
   transition: all 0.3s ease;
   text-align: center;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
   font-size: 1rem;
   box-shadow: 0 0 25px rgba(0, 119, 255, 0.3);
   position: relative;
   overflow: hidden;
   z-index: 1;
-  margin: 0.5rem 0;
+  margin: 0.5rem;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   white-space: nowrap;
+
+  max-width: 100%;
+  min-width: 150px;
 }
+
+/* Container for centering buttons responsively */
+
+
 
 /* Button group for better alignment */
 .button-group {
