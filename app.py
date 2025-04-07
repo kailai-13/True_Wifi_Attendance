@@ -859,49 +859,11 @@ def logout():
         session.pop('current_room', None)
 
     elif 'admin_id' in session:
-        admin_id = session.get('admin_id')
-        admin = Admin.query.get(admin_id)
-        
-        # Find and temporarily close all active rooms owned by this admin
-        if admin:
-            active_rooms = Room.query.filter_by(admin_id=admin_id, is_active=True).all()
-            
-            for room in active_rooms:
-                # Temporarily close the room
-                room.is_active = False
-                
-                # Update all present students in this room
-                students = Student.query.filter_by(current_room=room.room_code, is_logged_in=True).all()
-                
-                for student in students:
-                    # Create attendance record for each student
-                    if student.login_time:
-                        active_duration = (datetime.now() - student.login_time).total_seconds() / 60
-                        attendance = AttendanceRecord(
-                            roll_number=student.roll_number,
-                            room_code=room.room_code,
-                            login_time=student.login_time,
-                            logout_time=datetime.now(),
-                            active_duration=active_duration
-                        )
-                        db.session.add(attendance)
-                    
-                    # Reset student login status
-                    student.is_logged_in = False
-                    student.current_room = None
-                    student.login_time = None
-                    student.last_active_time = None
-                    student.current_bssid = None
-                    student.is_active = True
-            
-            # Commit all changes
-            db.session.commit()
-        
-        # Clear admin session
         session.pop('admin_id', None)
         session.pop('admin_username', None)
 
     return jsonify({'success': True, 'message': 'Logged out successfully', 'redirect': url_for('index')})
+
 # Update student activity
 @app.route('/update_activity', methods=['POST'])
 def update_activity():
