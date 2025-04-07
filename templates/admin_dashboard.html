@@ -74,7 +74,7 @@
                     <div class="count" id="excused-count">0</div>
                 </div>
       
-                
+
             </div>
             
             <div class="room-tabs">
@@ -208,14 +208,16 @@
                     <div class="member-name">${member.username}</div>
                     <div class="member-roll">${member.roll_number}</div>
                     <div class="member-status status-${member.status.replace(/\s+/g, '-').toLowerCase()}" id="status-display-${member.roll_number}">
-                        Status: ${member.status}
-                      </div>
-                      
+                        Status: ${member.active_status === "Inactive (No Activity)" 
+                        ? "Was Present But Then Disconnected" 
+                        : member.status}
+                    </div>
+
                     ${member.status === 'Present' ? `
                         <div class="member-active" id="active-${member.roll_number}">Connection: ${member.active_status}</div>
                         <div class="member-time" id="time-${member.roll_number}">Active Time: ${member.active_time}</div>
                     ` : ''}
-                </div>
+                </div>  
                 <div class="member-actions">
                     <select id="status-${member.roll_number}" class="status-select">
                         <option value="Not Present" ${member.status === 'Not Present' ? 'selected' : ''}>Not Present</option>
@@ -326,36 +328,43 @@
             // Preserve select state
             const select = card.querySelector('.status-select');
             const currentSelection = select ? select.value : member.status;
-    
-            // Update displayed status
+        
+            // Update displayed status with proper logic for disconnected users
             const statusDisplay = card.querySelector('.member-status');
-            if (statusDisplay) statusDisplay.textContent = `Status: ${member.status}`;
-    
+            if (statusDisplay) {
+                const statusText = member.active_status?.trim() === "Inactive (No Activity)"
+                    ? "Was Present But Then Disconnected"
+                    : member.status;
+                statusDisplay.textContent = `Status: ${statusText}`;
+            }
+        
             // Update connection info
             const activeDiv = card.querySelector('.member-active');
             const timeDiv = card.querySelector('.member-time');
-            
+        
             if (member.status === 'Present') {
                 if (!activeDiv) {
                     card.querySelector('.member-info').insertAdjacentHTML('beforeend',
-                        `<div class="member-active">Connection: ${member.active_status}</div>
-                         <div class="member-time">Active Time: ${member.active_time}</div>`);
+                        `<div class="member-active" id="active-${member.roll_number}">Connection: ${member.active_status}</div>
+                         <div class="member-time" id="time-${member.roll_number}">Active Time: ${member.active_time}</div>`);
                 } else {
                     activeDiv.textContent = `Connection: ${member.active_status}`;
-                    timeDiv.textContent = `Active Time: ${member.active_time}`;
+                    if (timeDiv) {
+                        timeDiv.textContent = `Active Time: ${member.active_time}`;
+                    }
                 }
-            } else if (activeDiv) {
-                activeDiv.remove();
-                timeDiv.remove();
+            } else {
+                if (activeDiv) activeDiv.remove();
+                if (timeDiv) timeDiv.remove();
             }
-    
+        
             // Restore select value
             if (select) {
                 select.value = currentSelection;
                 select.dataset.originalValue = member.status;
             }
         }
-    
+        
         function addToContainers(card, status, containers) {
             containers.all.appendChild(card.cloneNode(true));
             

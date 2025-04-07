@@ -915,6 +915,7 @@ def active_students():
         students_list.append({
             'roll_number': student.roll_number,
             'username': student.username,
+            
             'status': status,
             'active_time': active_time,
             'room': student.current_room
