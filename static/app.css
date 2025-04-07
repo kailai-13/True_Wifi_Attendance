@@ -1495,3 +1495,9 @@ video, canvas {
   color: #ffc107;
   border: 1px solid #ffc107;
 }
+
+.status-mid{
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #ea07ff;
+  border: 1px solid #ea07ff;
+}
