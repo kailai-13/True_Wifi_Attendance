@@ -986,7 +986,7 @@ def download_attendance(room_code):
             writer.writerow({
                 'roll_number': member.roll_number,
                 'username': member.username,
-                'status': member.status,
+                'status':  "Was Present But Then Disconnected" if active_status=="Inactive (No Activity)" else member.status ,
                 'is_registered': "Yes" if member.is_registered else "No",
                 'active_status': active_status if member.status == 'Present' else "N/A",
                 'login_time': login_time,
