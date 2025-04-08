@@ -102,13 +102,43 @@ def get_wifi_bssid():
         if system == "Windows":
             result = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True)
             match = re.search(r'BSSID\s*:\s*([0-9A-Fa-f:-]+)', result.stdout)
-        else:  # Linux / macOS
-            result = subprocess.run(["iwconfig"], capture_output=True, text=True)
-            match = re.search(r'Access Point: ([0-9A-Fa-f:]+)', result.stdout)
-
-        return match.group(1) if match else "BSSID not found"
+            if match:
+                return match.group(1)
+        elif system == "Linux":
+            # Try multiple Linux commands
+            try:
+                result = subprocess.run(["iwconfig"], capture_output=True, text=True)
+                match = re.search(r'Access Point: ([0-9A-Fa-f:]+)', result.stdout)
+                if match:
+                    return match.group(1)
+            except FileNotFoundError:
+                try:
+                    result = subprocess.run(["iw", "dev"], capture_output=True, text=True)
+                    match = re.search(r'addr ([0-9A-Fa-f:]+)', result.stdout)
+                    if match:
+                        return match.group(1)
+                except FileNotFoundError:
+                    pass
+        elif system == "Darwin":  # macOS
+            try:
+                result = subprocess.run(["/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I"], capture_output=True, text=True)
+                match = re.search(r'BSSID: ([0-9A-Fa-f:]+)', result.stdout)
+                if match:
+                    return match.group(1)
+            except FileNotFoundError:
+                pass
+        
+        # If we get here, we couldn't get the BSSID with platform-specific methods
+        # Generate a unique identifier based on hostname and IP for this session
+        import socket
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        return f"HOST-{hostname}-{ip}"  # Use a prefix to identify this is a hostname-based ID
+            
     except Exception as e:
-        return str(e)
+        # Log the error but don't fail - return a placeholder value instead
+        print(f"Error getting BSSID: {e}")
+        return "BSSID-UNAVAILABLE"
 
 # Background thread to check WiFi connection of all logged-in students
 def check_wifi_connections():
@@ -742,9 +772,23 @@ def login_student():
             flash("Room is inactive or temporarily closed")
             return redirect(url_for('login_student'))
         
-        # Verify BSSID matches the room's BSSID
+        # Verify BSSID matches the room's BSSID with improved handling
         current_bssid = get_wifi_bssid()
-        if current_bssid != room.bssid:
+        
+        # Modified BSSID check logic
+        if current_bssid.startswith("HOST-") and room.bssid.startswith("HOST-"):
+            # Compare just the IP part or match if on same machine
+            same_network = (current_bssid.split('-')[-1] == room.bssid.split('-')[-1]) or (
+                current_bssid.split('-')[1] == room.bssid.split('-')[1])
+            if not same_network:
+                flash("You must be connected to the same network as the admin who created this room")
+                return redirect(url_for('login_student'))
+        elif (current_bssid.startswith("BSSID-UNAVAILABLE") or 
+              room.bssid.startswith("BSSID-UNAVAILABLE")):
+            # If we couldn't determine BSSID on either end, skip the check
+            pass
+        elif current_bssid != room.bssid:
+            # Normal BSSID comparison for when we have actual BSSIDs
             flash("You must be connected to the same network as the admin who created this room")
             return redirect(url_for('login_student'))
             
@@ -802,9 +846,22 @@ def update_wifi_status():
     if not room:
         return jsonify({'success': False, 'message': 'Room not found'})
     
-    # Update student's current BSSID and active status
+    # Update student's current BSSID
     student.current_bssid = current_bssid
-    student.is_active = (current_bssid == room.bssid)
+    
+    # Modified BSSID comparison logic
+    if current_bssid.startswith("HOST-") and room.bssid.startswith("HOST-"):
+        # Compare just the IP part or match if on same machine
+        student.is_active = (current_bssid.split('-')[-1] == room.bssid.split('-')[-1]) or (
+            current_bssid.split('-')[1] == room.bssid.split('-')[1])
+    elif (current_bssid.startswith("BSSID-UNAVAILABLE") or 
+          room.bssid.startswith("BSSID-UNAVAILABLE")):
+        # If we couldn't determine BSSID on either end, assume they're active
+        student.is_active = True
+    else:
+        # Normal BSSID comparison
+        student.is_active = (current_bssid == room.bssid)
+    
     db.session.commit()
     
     return jsonify({
