@@ -1,2 +1,3 @@
 *.instance
 *.flask_session
+*.env
