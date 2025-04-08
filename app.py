@@ -963,10 +963,10 @@ def active_students():
             active_time = "00:00:00"
         
         # Check if student is connected to correct WiFi
-        status = "Active" if student.is_active else "Inactive (WiFi Disconnected)"
+        status = "Active" if student.is_active else "Inactive (No Activity)"
         
         # Also check if student is active within last 2 minutes as a backup
-        if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 120:
+        if student.is_active and student.last_active_time and (datetime.now() - student.last_active_time).seconds > 30:
             status = "Inactive (No Activity)"
             
         students_list.append({
