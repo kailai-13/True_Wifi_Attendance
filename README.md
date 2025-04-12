@@ -3,7 +3,7 @@
 ---
       
 ## **✨ Key Features**     
-| Feature | Benefit |   
+| Feature | Benefit |    
 |---------|---------| 
 | **🔒 WiFi BSSID Verification** | Ensures physical presence by matching student/admin WiFi |   
 | **📊 Real-Time Monitoring** | Live dashboard shows active students with connection status |    
