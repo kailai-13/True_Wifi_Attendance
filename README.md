@@ -1,13 +1,13 @@
 # **🎯 Smart Attendance System**  
-**A Modern, WiFi-Based Classroom Attendance Tracker**      
+**A Modern, WiFi-Based Classroom Attendance Tracker**       
 ---
-      
-## **✨ Key Features**    
-| Feature | Benefit |   
-|---------|---------|
-| **🔒 WiFi BSSID Verification** | Ensures physical presence by matching student/admin WiFi |   
-| **📊 Real-Time Monitoring** | Live dashboard shows active students with connection status |   
-| **📝 Automated Records** | Generates attendance logs with timestamps |   
+       
+## **✨ Key Features**     
+| Feature | Benefit |    
+|---------|---------| 
+| **🔒 WiFi BSSID Verification** | Ensures physical presence by matching student/admin WiFi |    
+| **📊 Real-Time Monitoring** | Live dashboard shows active students with connection status |    
+| **📝 Automated Records** | Generates attendance logs with timestamps |     
 | **👨‍🏫 Multi-Room Support** | Admins can manage multiple classrooms |  
 | **📤 CSV Export** | One-click download of attendance reports |
 
