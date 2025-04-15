@@ -1,0 +1,91 @@
+
+.sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+}
+
+.sidebar-header {
+    padding: 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-header h2 {
+    font-size: 1.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sidebar-toggle {
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.2rem;
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.sidebar-menu {
+    list-style-type: none;
+    padding: 0;
+}
+
+.sidebar-menu-item {
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.sidebar-menu-item:hover {
+    background-color: var(--sidebar-hover);
+}
+
+.sidebar-menu-item.active {
+    background-color: var(--primary-color);
+    border-left: 4px solid #fff;
+}
+
+.sidebar-menu-item i {
+    margin-right: 15px;
+    font-size: 1.2rem;
+    min-width: 20px;
+    text-align: center;
+}
+
+.sidebar-menu-item span {
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.3s;
+}
+
+.sidebar.collapsed .sidebar-menu-item span {
+    opacity: 0;
+    width: 0;
+}
+
+.sidebar-footer {
+    padding: 15px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.logout-btn, .login-btn {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 5px;
+}
