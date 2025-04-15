@@ -16,8 +16,7 @@ import base64
 import json
 import os
 import uuid
-from datetime import datetime # Added for in-memory file handling
-
+from datetime import datetime 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
 face_model = YOLO('yolov8n.pt')
