@@ -44,7 +44,7 @@
                             <button onclick="manageRoomMembers('{{ room.room_code }}')">Manage Members</button>
                             <button onclick="downloadAttendance('{{ room.room_code }}')">Download Attendance</button>
                             {% if room.temporarily_closed %}
-                                <button class="success" onclick="openRoom('{{ room.room_code }}')">Open Room</button>
+                                <button  onclick="openRoom('{{ room.room_code }}')">Open Room</button>
                             {% elif room.active %}
                                 <button class="warning" onclick="temporarilyCloseRoom('{{ room.room_code }}')">Temporarily Close</button>
                             {% endif %}
