@@ -1,4 +1,4 @@
-```markdown
+
 # Attendance System with Face Recognition
 
 ![Flask](https://img.shields.io/badge/Flask-2.2.5-green)
@@ -38,7 +38,7 @@ A Flask-based web application for tracking student attendance using face recogni
 ```bash
 git clone https://github.com/yourusername/attendance-system.git
 cd attendance-system
-```
+
 
 ### 2. Set Up Virtual Environment
 ```bash
