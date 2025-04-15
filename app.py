@@ -188,40 +188,40 @@ hog = cv2.HOGDescriptor(
 )
 
 
-def compare_faces(face1, face2, threshold=0.7):
+def compare_faces(face1, face2, threshold=0.7, student_id=None, image_data=None):
     try:
         # Get student by student_id
-        student = Student.query.filter_by(student_id=student_id).first()
+        student = Student.query.filter_by(id=student_id).first()
         if not student or not student.face_encoding:
             return False, "Student not found or no face data"
 
         # Process submitted image
-        image_data = image_data.split(',')[1]
-        image_bytes = base64.b64decode(image_data)
-        np_arr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if image_data:
+            image_bytes = base64.b64decode(image_data)
+            np_arr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-        # Detect face using YOLOv8
-        results = face_model(img)
-        if len(results[0].boxes) != 1:
-            return False, "No or multiple faces detected"
+            # Detect face using YOLOv8
+            results = face_model(img)
+            if len(results[0].boxes) != 1:
+                return False, "No or multiple faces detected"
 
-        # Extract the face region
-        x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
-        face_img = img[int(y1):int(y2), int(x1):int(x2)]
-        face_img = cv2.resize(face_img, (100, 100))
+            # Extract the face region
+            x1, y1, x2, y2 = results[0].boxes.xyxy[0].tolist()
+            face_img = img[int(y1):int(y2), int(x1):int(x2)]
+            face_img = cv2.resize(face_img, (100, 100))
 
-        # Compare with stored face
-        stored_face_bytes = base64.b64decode(student.face_encoding)
-        stored_face_arr = np.frombuffer(stored_face_bytes, np.uint8)
-        stored_face_img = cv2.imdecode(stored_face_arr, cv2.IMREAD_COLOR)
+            # Compare with stored face
+            stored_face_bytes = base64.b64decode(student.face_encoding)
+            stored_face_arr = np.frombuffer(stored_face_bytes, np.uint8)
+            stored_face_img = cv2.imdecode(stored_face_arr, cv2.IMREAD_COLOR)
 
-        # Simple comparison using Mean Squared Error (MSE)
-        mse = np.mean((face_img - stored_face_img) ** 2)
-        if mse < 1000:  # Adjust threshold as needed
-            return True, "Face verified"
-        else:
-            return False, f"Verification failed (MSE: {mse})"
+            # Simple comparison using Mean Squared Error (MSE)
+            mse = np.mean((face_img - stored_face_img) ** 2)
+            if mse < 1000:  # Adjust threshold as needed
+                return True, "Face verified"
+            else:
+                return False, f"Verification failed (MSE: {mse})"
 
     except Exception as e:
         return False, str(e)
