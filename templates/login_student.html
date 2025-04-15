@@ -5,6 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <title>Student Login</title>
+    <style>
+        .camera-container {
+            width: 320px;
+            margin: 20px 0;
+        }
+        
+        #video {
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        #verifyFaceBtn {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        #verifyFaceBtn:hover {
+            background-color: #45a049;
+        }
+        
+        .face-status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        
+        .success {
+            color: green;
+        }
+        
+        .error {
+            color: red;
+        }
+    </style>
     <script>
         // Function to handle WiFi status checking
         function checkWifiStatus() {
@@ -40,7 +82,7 @@
         {% endif %}
     {% endwith %}
 
-    <form method="POST">
+    <form method="POST" id="login-form">
         <label>Roll Number:</label>
         <input type="text" name="roll_number" id="roll_number" required><br><br>
         
@@ -59,55 +101,240 @@
             <p id="wifi-status">WiFi Status: Checking...</p>
             <button type="button" onclick="checkWifiStatus()">Check WiFi Connection</button>
         </div><br>
+        
+        <!-- Face verification section -->
+        <h3>Face Verification</h3>
+        <p>Please look at the camera and verify your face to login.</p>
+        
+        <div class="camera-container">
+            <video id="video" autoplay></video>
+            <canvas id="canvas"></canvas>
+            <button type="button" id="verifyFaceBtn">Verify Face</button>
+            <div class="face-status" id="faceStatus"></div>
+        </div>
+        
+        <!-- Hidden field to store face verification status -->
+        <input type="hidden" name="face_verified" id="face_verified" value="false">
 
-        <button type="submit">Login</button>
+        <button type="submit" id="login-btn" disabled>Login</button>
     </form>
 
     <p>New student? <a href="{{ url_for('register_student') }}">Register here</a></p>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check room code and roll number eligibility
-            const rollNumberInput = document.getElementById('roll_number');
-            const roomCodeSelect = document.getElementById('room_code');
-            
-            function checkEligibility() {
-                const rollNumber = rollNumberInput.value;
-                const roomCode = roomCodeSelect.value;
-                
-                if (rollNumber && roomCode) {
-                    const formData = new FormData();
-                    formData.append('roll_number', rollNumber);
-                    formData.append('room_code', roomCode);
-                    
-                    fetch('/check_eligibility', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        const statusEl = document.createElement('p');
-                        statusEl.textContent = data.message;
-                        statusEl.style.color = data.eligible ? 'green' : 'red';
-                        
-                        // Remove any previous status message
-                        const prevStatus = document.querySelector('.eligibility-status');
-                        if (prevStatus) {
-                            prevStatus.remove();
-                        }
-                        
-                        statusEl.classList.add('eligibility-status');
-                        roomCodeSelect.parentNode.insertBefore(statusEl, roomCodeSelect.nextSibling);
-                    });
-                }
+// Function to handle WiFi status checking
+function checkWifiStatus() {
+    fetch("/update_wifi_status", {
+        method: "POST"
+    })
+    .then(response => response.json())
+    .then(data => {
+        const wifiStatus = document.getElementById('wifi-status');
+        if (data.success) {
+            if (data.is_active) {
+                wifiStatus.textContent = "WiFi Connection: Connected to correct network";
+                wifiStatus.style.color = "green";
+            } else {
+                wifiStatus.textContent = "WiFi Connection: Not connected to correct network!";
+                wifiStatus.style.color = "red";
             }
+        }
+    })
+    .catch(error => {
+        console.error('Error checking WiFi status:', error);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const rollNumberInput = document.getElementById('roll_number');
+    const roomCodeSelect = document.getElementById('room_code');
+    const loginBtn = document.getElementById('login-btn');
+    const faceStatus = document.getElementById('faceStatus');
+    const faceVerifiedInput = document.getElementById('face_verified');
+    
+    // Video elements
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const verifyFaceBtn = document.getElementById('verifyFaceBtn');
+    
+    // Face verification status
+    let faceVerified = false;
+    
+    // Check room code and roll number eligibility
+    function checkEligibility() {
+        const rollNumber = rollNumberInput.value;
+        const roomCode = roomCodeSelect.value;
+        
+        if (rollNumber && roomCode) {
+            const formData = new FormData();
+            formData.append('roll_number', rollNumber);
+            formData.append('room_code', roomCode);
             
-            rollNumberInput.addEventListener('blur', checkEligibility);
-            roomCodeSelect.addEventListener('change', checkEligibility);
-            
-            // Initial WiFi status check
-            checkWifiStatus();
+            fetch('/check_eligibility', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.createElement('p');
+                statusEl.textContent = data.message;
+                statusEl.style.color = data.eligible ? 'green' : 'red';
+                
+                // Remove any previous status message
+                const prevStatus = document.querySelector('.eligibility-status');
+                if (prevStatus) {
+                    prevStatus.remove();
+                }
+                
+                statusEl.classList.add('eligibility-status');
+                roomCodeSelect.parentNode.insertBefore(statusEl, roomCodeSelect.nextSibling);
+            });
+        }
+    }
+    
+    // Function to update login button state
+    function updateLoginButton() {
+        loginBtn.disabled = !faceVerified;
+    }
+    
+    // Initialize camera
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: 320,
+                    height: 240,
+                    facingMode: "user"
+                } 
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            console.error("Error accessing camera:", err);
+            faceStatus.textContent = "Camera access error: " + err.message;
+            faceStatus.className = "face-status error";
+        }
+    }
+    
+    // Verify face
+    verifyFaceBtn.addEventListener('click', function() {
+        const rollNumber = rollNumberInput.value;
+        if (!rollNumber) {
+            faceStatus.textContent = "Please enter your roll number first";
+            faceStatus.className = "face-status error";
+            return;
+        }
+        
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Convert canvas to base64 image
+        const imageData = canvas.toDataURL('image/jpeg');
+        
+        // Send to server for face verification
+        fetch('/verify_face', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                image_data: imageData,
+                roll_number: rollNumber
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                faceStatus.textContent = "Face verification successful!";
+                faceStatus.className = "face-status success";
+                faceVerified = true;
+                faceVerifiedInput.value = "true";
+                
+                // Stop the camera
+                const stream = video.srcObject;
+                if (stream) {
+                    const tracks = stream.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                
+                // Show captured image
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'captured-image';
+                const img = document.createElement('img');
+                img.src = imageData;
+                img.style.width = '160px';
+                imgContainer.appendChild(img);
+                document.querySelector('.camera-container').appendChild(imgContainer);
+                
+                // Hide video and verify button
+                video.style.display = 'none';
+                verifyFaceBtn.style.display = 'none';
+                
+                // Update login button
+                updateLoginButton();
+            } else {
+                faceStatus.textContent = "Face verification failed: " + data.message;
+                faceStatus.className = "face-status error";
+            }
+        })
+        .catch(error => {
+            console.error('Error verifying face:', error);
+            faceStatus.textContent = "Error: " + error.message;
+            faceStatus.className = "face-status error";
         });
+    });
+    
+    // Add event listeners for roll number and room code
+    rollNumberInput.addEventListener('change', checkEligibility);
+    roomCodeSelect.addEventListener('change', checkEligibility);
+    
+    // Initialize camera when page loads
+    initCamera();
+    
+    // Check WiFi status when page loads
+    checkWifiStatus();
+    
+    // Periodically update WiFi status
+    setInterval(checkWifiStatus, 30000); // Check every 30 seconds
+    
+    // Set up inactivity detection for student page
+    let inactivityTimer;
+    
+    function resetInactivityTimer() {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(function() {
+            // Update server that we're still active
+            fetch('/update_activity', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .catch(error => {
+                console.error('Error updating activity status:', error);
+            });
+        }, 60000); // Update every minute
+    }
+    
+    // Reset timer on user activity
+    ['mousemove', 'keypress', 'click', 'touchstart'].forEach(function(event) {
+        document.addEventListener(event, resetInactivityTimer);
+    });
+    
+    // Start the initial timer
+    resetInactivityTimer();
+    
+    // Set up the login form
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+        // Final check that face is verified
+        if (!faceVerified) {
+            e.preventDefault();
+            alert('Please complete face verification first');
+        }
+    });
+});
+
     </script>
 </body>
 </html>
+

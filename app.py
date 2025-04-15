@@ -8,10 +8,19 @@ from datetime import datetime, timedelta
 import os
 import threading
 import time
-import io  # Added for in-memory file handling
+import io 
+from ultralytics import YOLO
+import cv2
+import numpy as np
+import base64
+import json
+import os
+import uuid
+from datetime import datetime # Added for in-memory file handling
 
 # Create directory for storing face images if it doesn't exist
 os.makedirs('face_data', exist_ok=True)
+face_model = YOLO('yolov8n.pt')
 
 app = Flask(__name__)
 
@@ -66,6 +75,7 @@ class RoomMember(db.Model):
     # Composite unique constraint
     __table_args__ = (db.UniqueConstraint('room_code', 'roll_number', name='_room_roll_uc'),)
 # Update the Student model with room info and roll number
+
 class Student(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -74,12 +84,12 @@ class Student(db.Model):
     password = db.Column(db.String(100), nullable=False)
     current_room = db.Column(db.String(50))  # Store current room code
     current_bssid = db.Column(db.String(100))  # Store student's current BSSID
+    face_image_path = db.Column(db.String(200))  # Path to stored face image
     
     is_logged_in = db.Column(db.Boolean, default=False)
     login_time = db.Column(db.DateTime)
     last_active_time = db.Column(db.DateTime)
-    is_active = db.Column(db.Boolean, default=True)  # Track if student is connected to correct WiFi
-
+    is_active = db.Column(db.Boolean, default=True)
 class AttendanceRecord(db.Model):
     __bind_key__ = 'student_db'
     id = db.Column(db.Integer, primary_key=True)
@@ -140,6 +150,65 @@ def get_wifi_bssid():
         print(f"Error getting BSSID: {e}")
         return "BSSID-UNAVAILABLE"
 
+# Function to extract face from image data
+def extract_face(image_data):
+    try:
+        # Decode base64 image
+        encoded_data = image_data.split(',')[1]
+        nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Detect faces using YOLOv8
+        results = face_model(img)
+        
+        # Check if any face is detected
+        if len(results[0].boxes) == 0:
+            return None, "No face detected"
+        
+        # Get the bounding box of the first detected face
+        boxes = results[0].boxes
+        box = boxes[0].xyxy[0].cpu().numpy()  # Get the coordinates of the first face
+        x1, y1, x2, y2 = map(int, box)
+        
+        # Extract the face
+        face = img[y1:y2, x1:x2]
+        
+        # Resize for consistency
+        face = cv2.resize(face, (112, 112))
+        
+        return face, None
+    except Exception as e:
+        return None, str(e)
+
+hog = cv2.HOGDescriptor(
+    _winSize=(64, 64),
+    _blockSize=(16, 16),
+    _blockStride=(8, 8),
+    _cellSize=(8, 8),
+    _nbins=9
+)
+
+
+def compare_faces(face1, face2, threshold=0.7):
+    try:
+        face1 = cv2.resize(face1, (64, 64))
+        face2 = cv2.resize(face2, (64, 64))
+        
+        gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+        
+        feat1 = hog.compute(gray1)
+        feat2 = hog.compute(gray2)
+        
+        feat1 = feat1 / np.linalg.norm(feat1)
+        feat2 = feat2 / np.linalg.norm(feat2)
+
+        similarity = np.dot(feat1.flatten(), feat2.flatten())
+        return similarity > threshold
+    except Exception as e:
+        print(f"Error comparing faces: {e}")
+        return False
+
 # Background thread to check WiFi connection of all logged-in students
 def check_wifi_connections():
     with app.app_context():
@@ -178,6 +247,34 @@ def index():
     bssid = get_wifi_bssid()
     return render_template('index.html', bssid=bssid)
 
+@app.route('/register_face', methods=['POST'])
+def register_face():
+    if request.method == 'POST':
+        data = request.json
+        image_data = data.get('image_data')
+        
+        if not image_data:
+            return jsonify({'success': False, 'message': 'No image data provided'})
+        
+        # Extract face from image
+        face, error = extract_face(image_data)
+        if error:
+            return jsonify({'success': False, 'message': error})
+        
+        # Generate unique filename for the face
+        face_id = str(uuid.uuid4())
+        filename = f"{face_id}.jpg"
+        filepath = os.path.join('face_data', filename)
+        
+        # Save face image
+        cv2.imwrite(filepath, face)
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Face registered successfully', 
+            'face_id': face_id
+        })
+    
 # Admin registration
 @app.route('/register_admin', methods=['GET', 'POST'])
 def register_admin():
@@ -637,7 +734,6 @@ def close_room(room_code):
     db.session.commit()
 
     return jsonify({'success': True, 'message': f'Room {room_code} permanently closed'})
-# FIXED: Student registration - Fixed to properly check existence
 @app.route('/register_student', methods=['GET', 'POST'])
 def register_student():
     if request.method == 'POST':
@@ -645,6 +741,17 @@ def register_student():
         room_code = request.form.get('room_code')
         username = request.form.get('username')
         password = request.form.get('password')
+        face_id = request.form.get('face_id')
+        
+        # Verify face ID exists
+        if not face_id:
+            flash("Face registration is required")
+            return redirect(url_for('register_student'))
+            
+        face_path = os.path.join('face_data', f"{face_id}.jpg")
+        if not os.path.exists(face_path):
+            flash("Face data not found, please try again")
+            return redirect(url_for('register_student'))
         
         # Verify that this student is allowed in this room
         room_member = RoomMember.query.filter_by(
@@ -672,12 +779,13 @@ def register_student():
             flash("This roll number is already registered")
             return redirect(url_for('register_student'))
         
-        # Create new student account
+        # Create new student account with face image path
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         new_student = Student(
             roll_number=roll_number,
             username=username,
             password=hashed_password,
+            face_image_path=face_path,
             is_active=True
         )
         
@@ -697,6 +805,40 @@ def register_student():
     # Get all active rooms for dropdown
     active_rooms = Room.query.filter_by(active=True).all()
     return render_template('register_student.html', active_rooms=active_rooms)
+
+# Endpoint to verify face during student login
+@app.route('/verify_face', methods=['POST'])
+def verify_face():
+    data = request.json
+    image_data = data.get('image_data')
+    roll_number = data.get('roll_number')
+    
+    if not image_data or not roll_number:
+        return jsonify({'success': False, 'message': 'Missing data'})
+    
+    # Find student
+    student = Student.query.filter_by(roll_number=roll_number).first()
+    if not student or not student.face_image_path:
+        return jsonify({'success': False, 'message': 'Student face data not found'})
+    
+    # Extract face from login attempt
+    login_face, error = extract_face(image_data)
+    if error:
+        return jsonify({'success': False, 'message': error})
+    
+    # Load the registered face
+    registered_face = cv2.imread(student.face_image_path)
+    if registered_face is None:
+        return jsonify({'success': False, 'message': 'Could not load registered face data'})
+    
+    # Compare faces
+    match = compare_faces(login_face, registered_face)
+    # print(match)
+    
+    if match:
+        return jsonify({'success': True, 'message': 'Face verification successful'})
+    else:
+        return jsonify({'success': False, 'message': 'Face does not match. Please try again.'})
 
 # FIXED: Check if eligible to register - Fixed to properly check existence
 @app.route('/check_eligibility', methods=['POST'])
@@ -738,12 +880,19 @@ def check_eligibility():
     })
 
 # Modified login_student route to check for temporarily_closed rooms
+# Modified login student route to include face verification
 @app.route('/login_student', methods=['GET', 'POST'])
 def login_student():
     if request.method == 'POST':
         roll_number = request.form.get('roll_number')
         password = request.form.get('password')
         room_code = request.form.get('room_code')
+        face_verified = request.form.get('face_verified')
+        
+        # Ensure face verification was completed
+        if face_verified != 'true':
+            flash("Face verification is required")
+            return redirect(url_for('login_student'))
         
         student = Student.query.filter_by(roll_number=roll_number).first()
         
@@ -755,6 +904,7 @@ def login_student():
             flash("Invalid roll number or password")
             return redirect(url_for('login_student'))
         
+        # Rest of the login code remains the same...
         # Check if student is a member of this room
         room_member = RoomMember.query.filter_by(
             room_code=room_code,
@@ -814,6 +964,7 @@ def login_student():
     # Get list of active rooms for dropdown (only not temporarily closed)
     active_rooms = Room.query.filter_by(active=True, temporarily_closed=False).all()
     return render_template('login_student.html', active_rooms=active_rooms)
+
 # Student dashboard
 @app.route('/student_dashboard')
 def student_dashboard():

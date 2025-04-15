@@ -5,6 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='app.css') }}">
     <title>Student Registration</title>
+    <style>
+        .camera-container {
+            width: 320px;
+            margin: 20px 0;
+        }
+        
+        #video {
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        #captureBtn {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        #captureBtn:hover {
+            background-color: #45a049;
+        }
+        
+        .captured-image {
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .face-status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        
+        .success {
+            color: green;
+        }
+        
+        .error {
+            color: red;
+        }
+    </style>
 </head>
 <body>
     <h2>Register as Student</h2>
@@ -35,8 +82,22 @@
         <input type="password" name="password" required><br><br>
         
         <div id="eligibility-status"></div>
+        
+        <!-- Face capture section -->
+        <h3>Face Registration</h3>
+        <p>Please look at the camera and capture your face for registration.</p>
+        
+        <div class="camera-container">
+            <video id="video" autoplay></video>
+            <canvas id="canvas"></canvas>
+            <button type="button" id="captureBtn">Capture Face</button>
+            <div class="face-status" id="faceStatus"></div>
+        </div>
+        
+        <!-- Hidden field to store face ID -->
+        <input type="hidden" name="face_id" id="face_id">
 
-        <button type="submit" id="register-btn">Register</button>
+        <button type="submit" id="register-btn" disabled>Register</button>
     </form>
 
     <p>Already registered? <a href="{{ url_for('login_student') }}">Login here</a></p>
@@ -48,7 +109,18 @@
             const usernameInput = document.getElementById('username');
             const registerBtn = document.getElementById('register-btn');
             const eligibilityStatus = document.getElementById('eligibility-status');
+            const faceStatus = document.getElementById('faceStatus');
+            const faceIdInput = document.getElementById('face_id');
             
+            // Video elements
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const captureBtn = document.getElementById('captureBtn');
+            
+            // Face registration status
+            let faceRegistered = false;
+            
+            // Function to check eligibility
             function checkEligibility() {
                 const rollNumber = rollNumberInput.value;
                 const roomCode = roomCodeSelect.value;
@@ -76,14 +148,102 @@
                             usernameInput.readOnly = false;
                         }
                         
-                        // Enable or disable the register button based on eligibility
-                        registerBtn.disabled = !data.eligible;
+                        // Enable or disable register button based on both eligibility and face registration
+                        updateRegisterButton(data.eligible);
                     });
                 }
             }
             
+            // Function to update register button state
+            function updateRegisterButton(isEligible) {
+                registerBtn.disabled = !(isEligible && faceRegistered);
+            }
+            
+            // Initialize camera
+            async function initCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            width: 320,
+                            height: 240,
+                            facingMode: "user"
+                        } 
+                    });
+                    video.srcObject = stream;
+                } catch (err) {
+                    console.error("Error accessing camera:", err);
+                    faceStatus.textContent = "Camera access error: " + err.message;
+                    faceStatus.className = "face-status error";
+                }
+            }
+            
+            // Capture face and send to server
+            captureBtn.addEventListener('click', function() {
+                const context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Convert canvas to base64 image
+                const imageData = canvas.toDataURL('image/jpeg');
+                
+                // Send to server for face registration
+                fetch('/register_face', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image_data: imageData })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        faceStatus.textContent = "Face registered successfully!";
+                        faceStatus.className = "face-status success";
+                        faceRegistered = true;
+                        faceIdInput.value = data.face_id;
+                        
+                        // Stop the camera
+                        const stream = video.srcObject;
+                        if (stream) {
+                            const tracks = stream.getTracks();
+                            tracks.forEach(track => track.stop());
+                        }
+                        
+                        // Show captured image
+                        const imgContainer = document.createElement('div');
+                        imgContainer.className = 'captured-image';
+                        const img = document.createElement('img');
+                        img.src = imageData;
+                        img.style.width = '160px';
+                        imgContainer.appendChild(img);
+                        document.querySelector('.camera-container').appendChild(imgContainer);
+                        
+                        // Hide video and capture button
+                        video.style.display = 'none';
+                        captureBtn.style.display = 'none';
+                        
+                        // Update register button status
+                        const isEligible = eligibilityStatus.style.color === 'green';
+                        updateRegisterButton(isEligible);
+                    } else {
+                        faceStatus.textContent = "Face registration failed: " + data.message;
+                        faceStatus.className = "face-status error";
+                    }
+                })
+                .catch(error => {
+                    console.error('Error registering face:', error);
+                    faceStatus.textContent = "Error: " + error.message;
+                    faceStatus.className = "face-status error";
+                });
+            });
+            
+            // Add event listeners
             rollNumberInput.addEventListener('blur', checkEligibility);
             roomCodeSelect.addEventListener('change', checkEligibility);
+            
+            // Initialize camera when page loads
+            initCamera();
         });
     </script>
 </body>
