@@ -1,195 +1,178 @@
-Here's a comprehensive `README.md` file for your project:
 
-```markdown
-# Attendance Management System with Face Recognition
+# Attendance System with Face Recognition
 
-![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
-![Flask](https://img.shields.io/badge/flask-%23000.svg?style=for-the-badge&logo=flask&logoColor=white)
-![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
-![SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg?style=for-the-badge&logo=sqlite&logoColor=white)
-
-A Flask-based web application for attendance tracking using face recognition and WiFi-based location verification.
+A Flask-based web application for tracking student attendance using face recognition and WiFi BSSID verification. Features separate dashboards for administrators and students with real-time tracking capabilities.
 
 ## Features
 
-- **Role-based access control** (Admin & Student)
-- **Face recognition authentication** using YOLOv8
-- **Real-time attendance tracking**
-- **WiFi-based location verification** (BSSID matching)
-- **Room management system** (create/close rooms)
-- **CSV export** for attendance records
-- **Responsive web interface**
+- **Admin Features**:
+  - Create/manage virtual classrooms
+  - View real-time student presence
+  - Download full attendance reports
+  - Close classrooms and log out all students
+  - WiFi network restriction enforcement
 
-## System Architecture
+- **Student Features**:
+  - Secure face registration
+  - Multi-factor authentication (password + face)
+  - Session duration tracking
+  - Personal attendance history download
+  - Automatic session maintenance
 
-```
-├── app.py                # Main application file
-├── face_data/            # Stores registered face images
-├── templates/            # HTML templates
-│   ├── admin_dashboard.html
-│   ├── login_admin.html
-│   ├── register_student.html
-│   └── ...
-├── admin.db              # Admin database
-├── students.db           # Student database
-└── rooms.db              # Room management database
-```
+## Prerequisites
+
+- Python 3.8+
+- OpenSSL
+- Web browser with camera access
+- Required Packages:
+  ```bash
+  pip install flask flask-sqlalchemy flask-bcrypt opencv-python numpy ultralytics flask-session
+
 
 ## Installation
 
-### Prerequisites
-- Python 3.7+
-- pip package manager
-
-### Setup
-
-1. Clone the repository:
+1. **Clone Repository**:
    ```bash
    git clone https://github.com/yourusername/attendance-system.git
    cd attendance-system
    ```
 
-2. Install dependencies:
+2. **Set Up Virtual Environment**:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   venv\Scripts\activate    # Windows
+   ```
+
+3. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. Download YOLOv8 weights:
+4. **Generate SSL Certificates**:
    ```bash
-   wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt
+   openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
    ```
 
-4. Initialize databases:
+5. **Initialize Databases**:
    ```bash
-   python init_db.py
+   flask shell
+   >>> db.create_all()
+   >>> exit()
+   ```
+
+## Configuration
+
+1. **YOLO Model Setup**:
+   - Place `yolov8n.pt` in project root (download from Ultralytics)
+   
+2. **Environment Variables**:
+   ```bash
+   export FLASK_SECRET_KEY='your-secret-key'
    ```
 
 ## Usage
 
-### Running the Application
-```bash
-python app.py
+### Admin Portal
+
+1. **Access**:
+   - Navigate to `https://localhost:5000/login_admin`
+
+2. **Registration**:
+   - First-time admin registration requires secret key (configure in code)
+
+3. **Create Classroom**:
+   - After login, enter room code in dashboard
+   - System captures current WiFi BSSID automatically
+
+4. **Manage Attendance**:
+   - View real-time student presence
+   - Close classrooms to log out all students
+   - Download CSV reports from dashboard
+
+### Student Portal
+
+1. **Registration**:
+   - Visit `https://localhost:5000/register_student`
+   - Provide student ID, username, password
+   - Capture face using webcam interface
+
+2. **Login**:
+   - Select active classroom from dropdown
+   - Enter password and perform face verification
+   - System validates WiFi network match
+
+3. **Session Maintenance**:
+   - Automatic session extension with activity
+   - Manual logout available in dashboard
+
+4. **Attendance Records**:
+   - Download personal history as CSV
+   - Includes room codes and session durations
+
+## Technical Architecture
+
+```mermaid
+graph TD
+    A[Client Browser] --> B[HTTPS Server]
+    B --> C{Authentication}
+    C -->|Admin| D[Admin Dashboard]
+    C -->|Student| E[Student Dashboard]
+    D --> F[Room Management]
+    D --> G[Attendance Reports]
+    E --> H[Face Verification]
+    E --> I[Session Tracking]
+    F --> J[SQLite Database]
+    G --> J
+    H --> K[YOLOv8 Model]
+    I --> J
 ```
 
-The system will be available at:
-- Admin interface: `https://localhost:5000/login_admin`
-- Student interface: `https://localhost:5000/login_student`
+## Security Features
 
-### Admin Credentials
-First admin must register at `/register_admin`
-
-### Key Endpoints
-| Endpoint | Description |
-|----------|-------------|
-| `/create_room` | Create new attendance room |
-| `/add_room_members` | Add students to room |
-| `/verify_face` | Face verification API |
-| `/download_attendance` | Export attendance records |
-
-## Configuration
-
-Edit `config.py` for:
-```python
-class Config:
-    SECRET_KEY = 'your-secret-key-here'
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///default.db'
-    SESSION_TYPE = 'filesystem'
-```
-
-## API Documentation
-
-### Face Verification API
-```http
-POST /verify_face
-Content-Type: application/json
-
-{
-    "image_data": "base64_encoded_image",
-    "roll_number": "STU001"
-}
-```
-
-Response:
-```json
-{
-    "success": true,
-    "message": "Face verification successful"
-}
-```
-
-## Screenshots
-
-![Admin Dashboard](screenshots/admin_dashboard.png)
-*Admin Dashboard Interface*
-
-![Face Registration](screenshots/face_registration.png)
-*Student Face Registration*
+- Encrypted HTTPS communication
+- Bcrypt password hashing
+- Session-based authentication
+- WiFi BSSID verification
+- Face encoding storage (Base64)
+- Automatic session termination
 
 ## Troubleshooting
 
-**Issue**: Face recognition not working
-- Solution: Ensure proper lighting during face capture
+**Face Recognition Issues**:
+- Ensure good lighting conditions
+- Remove obstructions (glasses/masks)
+- Position face centrally in frame
 
-**Issue**: WiFi verification fails
-- Solution: Check if on same network as admin
+**Network Errors**:
+- Verify matching WiFi network
+- Check admin's current BSSID
+- Confirm room is active
+
+**Session Problems**:
+- Refresh page to update status
+- Manually log out and retry
+- Clear browser cache if persistent
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/update_activity` | POST | Updates student active timestamp |
+| `/active_students` | GET | Returns JSON of current attendees |
+| `/verify_face` | POST | Processes face verification attempt |
 
 ## License
 
-MIT License
+MIT License - See [LICENSE](LICENSE) for details
 
 ## Contributing
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork repository
+2. Create feature branch
+3. Submit pull request
+4. Include detailed documentation
 
-## Acknowledgments
+## Support
 
-- Ultralytics for YOLOv8 model
-- Flask community for web framework
-- OpenCV for computer vision capabilities
-```
-
-### Additional Recommendations:
-
-1. Create a `requirements.txt` file with:
-```
-flask
-flask-sqlalchemy
-flask-bcrypt
-flask-session
-opencv-python
-ultralytics
-numpy
-python-dotenv
-```
-
-2. Create an `init_db.py` for database initialization:
-```python
-from app import app, db
-
-with app.app_context():
-    db.create_all()
-    print("Databases initialized successfully!")
-```
-
-3. Add a `.gitignore` file:
-```
-__pycache__/
-*.pyc
-*.db
-face_data/*
-.env
-```
-
-This README provides comprehensive documentation including:
-- Badges for key technologies
-- Clear installation instructions
-- Usage examples
-- API documentation
-- Troubleshooting guide
-- Contribution guidelines
-
-Would you like me to add any specific sections or modify any part of this README?
+For assistance, contact: [kailainathan2006@gmail.com](mailto:kailainathan2006@gmail.com)
