@@ -1,5 +1,3 @@
-Here's your refined `README.md` with improved formatting and organization:
-
 ```markdown
 # Attendance System with Face Recognition
 
