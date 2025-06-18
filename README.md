@@ -11,9 +11,6 @@ A Flask-based web application for tracking student attendance using face recogni
 ## Key Features 
   
 ### Admin Features
-
-
-
 - 🏫 Create/manage virtual classrooms
 - 👥 Real-time student presence monitoring
 - 📊 Download comprehensive attendance reports
