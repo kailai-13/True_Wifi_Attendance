@@ -1,5 +1,5 @@
         
-# Attendance System with Face Recognition
+# Attendance System with Face Recognition  
 
 ![Flask](https://img.shields.io/badge/Flask-2.2.5-green) 
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.7.0-blue)   
