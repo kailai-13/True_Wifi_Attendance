@@ -5,7 +5,7 @@
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.7.0-blue)    
 ![YOLOv8](https://img.shields.io/badge/YOLOv8-8.0.0-red)    
 ![SQLite](https://img.shields.io/badge/SQLite-3.0-lightgrey)   
-  
+   
 A Flask-based web application for tracking student attendance using face recognition and WiFi BSSID verification. Features separate dashboards for administrators and students with real-time tracking capabilities.
   
 ## Key Features  
