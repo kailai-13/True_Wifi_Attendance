@@ -1,4 +1,4 @@
-           
+            
 # Attendance System with Face Recognition  
 
 ![Flask](https://img.shields.io/badge/Flask-2.2.5-green)  
